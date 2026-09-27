@@ -1,0 +1,18 @@
+# COPILOTWORKSPACE CONTEXT
+
+The current workspace includes the following specific characteristics:
+- Projects targeting: '.NET 10'
+Consider these characteristics when generating or modifying code, but only if they are directly relevant to the task.
+
+
+
+# IDESTATE CONTEXT
+User's current development environment is: Microsoft Visual Studio Community 2026 (18.9.2)
+User's workspace root path is:
+C:\Users\User\source\repos\ERP\
+User's solution file is:
+C:\Users\User\source\repos\ERP\ERP.slnx
+User's preferred terminal shell is: powershell.exe
+The user's current file: ERP\Form1.cs
+The user has the following active Git repositories:
+ - Repository cloned at the directory: "C:\Users\User" on branch  with remotes:

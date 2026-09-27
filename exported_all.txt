@@ -1,0 +1,342 @@
+Anorath.api\appsettings.json
+/*{
+  "Logging": {
+	"LogLevel": {
+	  "Default": "Information",
+	  "Microsoft.AspNetCore": "Warning"
+	}
+  },
+  "AllowedHosts": "*",
+  "ConnectionStrings": {
+	"MasterErp": "Server=db67878.public.databaseasp.net;Database=db67878;User Id=db67878;Password=4Gx=p5%PC_j8;Encrypt=True;TrustServerCertificate=True;"
+  }
+}*/
+{
+  "Logging": {
+	"LogLevel": {
+	  "Default": "Information",
+	  "Microsoft.AspNetCore": "Warning"
+	}
+  },
+  "AllowedHosts": "*",
+  "ConnectionStrings": {
+	"MasterErp": "Server=(localdb)\\mssqllocaldb;Database=AnorathMasterDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;"
+  }
+}
+
+Anorath.domain\Entities\CompanyDatabase.cs
+namespace Anorath.domain.Entities
+{
+	public class CompanyDatabase
+	{
+		public int CompanyDatabaseId { get; set; }
+
+		public int CompanyId { get; set; }
+
+		public string ServerName { get; set; } = string.Empty;
+
+		public string DatabaseName { get; set; } = string.Empty;
+
+		public string ConnectionString { get; set; } = string.Empty;
+
+		public bool IsActive { get; set; } = true;
+
+		public Company? Company { get; set; }
+	}
+}
+
+Anorath.Infrastructure\Data\MasterErpDbContext.cs
+using Anorath.domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace Anorath.Infrastructure.Data
+{
+	public class MasterErpDbContext : DbContext
+	{
+		public MasterErpDbContext(DbContextOptions<MasterErpDbContext> options)
+			: base(options)
+		{
+		}
+
+		public DbSet<Company> Companies => Set<Company>();
+		public DbSet<CompanyDatabase> CompanyDatabases => Set<CompanyDatabase>();
+		public DbSet<Device> Devices => Set<Device>();
+
+		protected override void OnModelCreating(ModelBuilder builder)
+		{
+			base.OnModelCreating(builder);
+
+			// Company
+			builder.Entity<Company>(entity =>
+			{
+				entity.HasKey(x => x.CompanyId);
+
+				entity.Property(x => x.CompanyCode)
+					.HasMaxLength(50)
+					.IsRequired();
+
+				entity.Property(x => x.CompanyName)
+					.HasMaxLength(200)
+					.IsRequired();
+
+				entity.HasIndex(x => x.CompanyCode)
+					.IsUnique();
+			});
+
+			// CompanyDatabase
+			builder.Entity<CompanyDatabase>(entity =>
+			{
+				entity.HasKey(x => x.CompanyDatabaseId);
+
+				entity.Property(x => x.ServerName)
+					.HasMaxLength(200)
+					.IsRequired();
+
+				entity.Property(x => x.DatabaseName)
+					.HasMaxLength(200)
+					.IsRequired();
+
+				entity.HasOne(x => x.Company)
+					.WithMany()
+					.HasForeignKey(x => x.CompanyId)
+					.OnDelete(DeleteBehavior.Restrict);
+			});
+
+			// Device
+			builder.Entity<Device>(entity =>
+			{
+				entity.HasKey(x => x.DeviceId);
+
+				entity.Property(x => x.DeviceCode)
+					.HasMaxLength(50)
+					.IsRequired();
+
+				entity.Property(x => x.DeviceName)
+					.HasMaxLength(200)
+					.IsRequired();
+
+				entity.HasOne(x => x.Company)
+					.WithMany(x => x.Devices)
+					.HasForeignKey(x => x.CompanyId)
+					.OnDelete(DeleteBehavior.Restrict);
+
+				entity.HasIndex(x => new { x.CompanyId, x.DeviceCode })
+					.IsUnique();
+			});
+
+			builder.Entity<CompanyDatabase>(entity =>
+			{
+				entity.HasKey(x => x.CompanyDatabaseId);
+
+				entity.Property(x => x.ServerName)
+					.HasMaxLength(200)
+					.IsRequired();
+
+				entity.Property(x => x.DatabaseName)
+					.HasMaxLength(200)
+					.IsRequired();
+
+				entity.Property(x => x.ConnectionString)
+					.IsRequired();
+
+				entity.HasOne(x => x.Company)
+					.WithMany()
+					.HasForeignKey(x => x.CompanyId)
+					.OnDelete(DeleteBehavior.Restrict);
+			});
+		}
+	}
+}
+
+Anorath.Infrastructure\Data\MasterErpDbContextFactory.cs
+using Anorath.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
+
+namespace Anorath.Infrastructure.Data
+{
+	public class MasterErpDbContextFactory : IDesignTimeDbContextFactory<MasterErpDbContext>
+	{
+		public MasterErpDbContext CreateDbContext(string[] args)
+		{
+			var optionsBuilder = new DbContextOptionsBuilder<MasterErpDbContext>();
+
+
+			optionsBuilder.UseSqlServer("Server=(localdb)\\mssqllocaldb;Database=AnorathMasterDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;");
+
+			return new MasterErpDbContext(optionsBuilder.Options);
+		}
+	}
+}
+
+Anorath.Infrastructure\Data\TenantErpDbContext.cs
+using Anorath.domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace Anorath.Infrastructure.Data
+{
+	public class TenantErpDbContext : DbContext
+	{
+		public TenantErpDbContext(
+			DbContextOptions<TenantErpDbContext> options)
+			: base(options)
+		{
+		}
+
+		// Tenant-specific business tables
+		public DbSet<Product> Products => Set<Product>();
+
+		public DbSet<Customer> Customers => Set<Customer>();
+
+		protected override void OnModelCreating(ModelBuilder builder)
+		{
+			base.OnModelCreating(builder);
+
+			// Product
+			builder.Entity<Product>(entity =>
+			{
+				entity.HasKey(e => e.ProductId);
+
+				entity.Property(e => e.Price)
+					.HasPrecision(18, 2);
+			});
+
+			// Customer
+			builder.Entity<Customer>(entity =>
+			{
+				entity.HasKey(e => e.CustomerId);
+
+				entity.Property(e => e.CustomerCode)
+					.HasMaxLength(50)
+					.IsRequired();
+
+				entity.Property(e => e.CustomerName)
+					.HasMaxLength(200)
+					.IsRequired();
+
+				entity.Property(e => e.ContactNumber)
+					.HasMaxLength(50);
+
+				entity.Property(e => e.EmailAddress)
+					.HasMaxLength(200);
+
+				entity.Property(e => e.Address)
+					.HasMaxLength(500);
+
+				entity.HasIndex(e => e.CustomerCode)
+					.IsUnique();
+			});
+		}
+	}
+}
+
+Anorath.Infrastructure\Data\TenantErpDbContextFactory.cs
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
+
+namespace Anorath.Infrastructure.Data
+{
+	public class TenantErpDbContextFactory
+		: IDesignTimeDbContextFactory<TenantErpDbContext>
+	{
+		public TenantErpDbContext CreateDbContext(string[] args)
+		{
+			var optionsBuilder =
+				new DbContextOptionsBuilder<TenantErpDbContext>();
+
+			optionsBuilder.UseSqlServer(
+				"Server=(localdb)\\mssqllocaldb;" +
+				"Database=AnorathTenantTemplateDb;" +
+				"Trusted_Connection=True;" +
+				"TrustServerCertificate=True;");
+
+			return new TenantErpDbContext(optionsBuilder.Options);
+		}
+	}
+}
+
+Anorath.Infrastructure\Services\ITenantService.cs
+using System.Threading.Tasks;
+
+namespace Anorath.Infrastructure.Services
+{
+	public interface ITenantService
+	{
+		string? GetTenantCode();
+
+		Task<string> GetConnectionStringAsync();
+	}
+}
+
+Anorath.Infrastructure\Services\TenantServices.cs
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+using Anorath.Infrastructure.Data;
+using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
+
+namespace Anorath.Infrastructure.Services
+{
+	public class TenantService : ITenantService
+	{
+		private readonly IHttpContextAccessor _httpContextAccessor;
+		private readonly MasterErpDbContext _masterDbContext;
+
+		public TenantService(
+			IHttpContextAccessor httpContextAccessor,
+			MasterErpDbContext masterDbContext)
+		{
+			_httpContextAccessor = httpContextAccessor;
+			_masterDbContext = masterDbContext;
+		}
+
+		public string? GetTenantCode()
+		{
+			var httpContext = _httpContextAccessor.HttpContext;
+
+			if (httpContext == null)
+			{
+				return null;
+			}
+
+			if (httpContext.Request.Headers.TryGetValue(
+				"X-Company-Code",
+				out var tenantCode))
+			{
+				return tenantCode.ToString();
+			}
+
+			return null;
+		}
+
+		public async Task<string> GetConnectionStringAsync()
+		{
+			var tenantCode = GetTenantCode();
+
+			if (string.IsNullOrWhiteSpace(tenantCode))
+			{
+				throw new InvalidOperationException(
+					"Tenant identifier header 'X-Company-Code' is missing in the request.");
+			}
+
+			var companyDb = await (
+				from company in _masterDbContext.Companies
+				join database in _masterDbContext.CompanyDatabases
+					on company.CompanyId equals database.CompanyId
+				where company.CompanyCode == tenantCode
+					  && company.IsActive
+					  && database.IsActive
+				select database.ConnectionString
+			).FirstOrDefaultAsync();
+
+			if (string.IsNullOrWhiteSpace(companyDb))
+			{
+				throw new InvalidOperationException(
+					$"Active database connection string not found for tenant: {tenantCode}");
+			}
+
+			return companyDb;
+		}
+	}
+}

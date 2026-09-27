@@ -1,0 +1,102 @@
+@Anorath.api_HostAddress = http://localhost:5166
+
+GET {{Anorath.api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
+GET {{Anorath.api_HostAddress}}/test-tenant
+X-Company-Code: COMP-001
+###
+POST {{Anorath.api_HostAddress}}/rooms
+X-Company-Code: COMP-001
+Content-Type: application/json
+
+{
+  "roomNumber": "114",
+  "roomType": "Deluxe",
+  "rate": 2500.00,
+  "status": "Available",
+  "isActive": true
+}
+###
+GET {{Anorath.api_HostAddress}}/rooms
+X-Company-Code: COMP-001
+###
+GET {{Anorath.api_HostAddress}}/products
+X-Company-Code: COMP-001
+
+###
+
+GET {{Anorath.api_HostAddress}}/customers
+X-Company-Code: COMP-001
+
+###
+POST {{Anorath.api_HostAddress}}/auth/login
+X-Company-Code: COMP-001
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin123"
+}
+
+###
+
+GET {{Anorath.api_HostAddress}}/reservations
+X-Company-Code: COMP-001
+
+###
+GET {{Anorath.api_HostAddress}}/dashboard/summary
+X-Company-Code: COMP-001
+
+###
+GET {{Anorath.api_HostAddress}}/dashboard/summary
+X-Company-Code: COMP-001
+
+###
+
+GET {{Anorath.api_HostAddress}}/analytics/kpis
+X-Company-Code: COMP-001
+
+###
+
+GET {{Anorath.api_HostAddress}}/financials/income-statement
+X-Company-Code: COMP-001
+
+###
+GET {{Anorath.api_HostAddress}}/dashboard/summary
+X-Company-Code: COMP-001
+
+###
+
+GET {{Anorath.api_HostAddress}}/reports/restaurant
+X-Company-Code: COMP-001
+
+###
+### Super Admin
+POST http://localhost:5166/auth/login
+Content-Type: application/json
+
+{ "username": "superadmin", "password": "Admin@123" }
+
+### Tenant C (Medium)
+POST http://localhost:5166/auth/login
+Content-Type: application/json
+
+{ "username": "comp001.admin", "password": "Admin@123" }
+
+### Wrong password (should be 401)
+POST http://localhost:5166/auth/login
+Content-Type: application/json
+
+{ "username": "comp001.admin", "password": "wrong" }
+### Login and look for "token"
+POST http://localhost:5166/auth/login
+Content-Type: application/json
+
+{ "username": "comp001.admin", "password": "Admin@123" }
+###
+### Dashboard with token
+GET http://localhost:5166/dashboard/summary
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyIiwibmFtZSI6ImNvbXAwMDEuYWRtaW4iLCJyb2xlIjoiQWRtaW4iLCJwbGFuIjoiTWVkaXVtIiwiY29tcGFueUNvZGUiOiJDT01QLTAwMSIsImV4cCI6MTc5MDUyNDAzMSwiaXNzIjoiQW5vcmF0aC5hcGkiLCJhdWQiOiJBbm9yYXRoLmNsaWVudHMifQ.qqgFoGGu2lwH3cAi5y1wdtjJWRkZINZsp-72P6flW2Q
+###

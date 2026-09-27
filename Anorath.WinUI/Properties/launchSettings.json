@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Anorath.WinUI (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Anorath.WinUI (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

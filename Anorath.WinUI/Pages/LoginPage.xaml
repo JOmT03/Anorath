@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Anorath.WinUI.Pages.LoginPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Left: brand panel -->
+        <Grid Grid.Column="0" Background="#1B3B4C">
+            <StackPanel VerticalAlignment="Center" Margin="56" Spacing="8">
+                <FontIcon Glyph="&#xE80F;" FontSize="48" Foreground="#DCEAEE" HorizontalAlignment="Left"/>
+                <TextBlock Text="Anorath Resort" FontSize="44" FontWeight="SemiBold" Foreground="White"/>
+                <TextBlock Text="Multi-tenant hospitality management" FontSize="16" Foreground="#DCEAEE"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Right: sign-in form -->
+        <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Width="360" Spacing="16">
+            <TextBlock Text="Sign in" FontSize="28" FontWeight="SemiBold"/>
+            <TextBlock Text="Use your staff account. Your company is detected automatically."
+                       TextWrapping="Wrap" Opacity="0.7"/>
+
+            <TextBox x:Name="UsernameBox" Header="Username" PlaceholderText="e.g. admin"/>
+            <PasswordBox x:Name="PasswordInput" Header="Password" KeyDown="PasswordInput_KeyDown"/>
+
+            <InfoBar x:Name="MessageBar" IsOpen="False" IsClosable="True"/>
+
+            <Button x:Name="LoginButton" Content="Sign In"
+                    Style="{StaticResource AccentButtonStyle}"
+                    HorizontalAlignment="Stretch" Click="LoginButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Page>    

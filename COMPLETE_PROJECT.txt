@@ -1,0 +1,2258 @@
+================================================================================
+COMPLETE ERP PROJECT - ALL SOURCE CODE
+Anorath ERP System - .NET 10
+================================================================================
+
+================================================================================
+FILE: Anorath.api\appsettings.json
+================================================================================
+/*{
+  "Logging": {
+	"LogLevel": {
+	  "Default": "Information",
+	  "Microsoft.AspNetCore": "Warning"
+	}
+  },
+  "AllowedHosts": "*",
+  "ConnectionStrings": {
+	"MasterErp": "Server=db67878.public.databaseasp.net;Database=db67878;User Id=db67878;Password=4Gx=p5%PC_j8;Encrypt=True;TrustServerCertificate=True;"
+  }
+}*/
+{
+  "Logging": {
+	"LogLevel": {
+	  "Default": "Information",
+	  "Microsoft.AspNetCore": "Warning"
+	}
+  },
+  "AllowedHosts": "*",
+  "ConnectionStrings": {
+	"MasterErp": "Server=(localdb)\\mssqllocaldb;Database=AnorathMasterDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;"
+  }
+}
+
+================================================================================
+FILE: Anorath.api\appsettings.Development.json
+================================================================================
+{
+  "Logging": {
+	"LogLevel": {
+	  "Default": "Information",
+	  "Microsoft.AspNetCore": "Warning"
+	}
+  }
+}
+
+================================================================================
+FILE: Anorath.api\Properties\launchSettings.json
+================================================================================
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+	"http": {
+	  "commandName": "Project",
+	  "dotnetRunMessages": true,
+	  "launchBrowser": false,
+	  "applicationUrl": "http://localhost:5166",
+	  "environmentVariables": {
+		"ASPNETCORE_ENVIRONMENT": "Development"
+	  }
+	},
+	"https": {
+	  "commandName": "Project",
+	  "dotnetRunMessages": true,
+	  "launchBrowser": false,
+	  "applicationUrl": "https://localhost:7241;http://localhost:5166",
+	  "environmentVariables": {
+		"ASPNETCORE_ENVIRONMENT": "Development"
+	  }
+	}
+  }
+}
+
+================================================================================
+FILE: Anorath.api\WeatherForecast.cs
+================================================================================
+namespace Anorath.api
+{
+	public class WeatherForecast
+	{
+		public DateOnly Date { get; set; }
+
+		public int TemperatureC { get; set; }
+
+		public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+
+		public string? Summary { get; set; }
+	}
+}
+
+================================================================================
+FILE: Anorath.api\Controllers\WeatherForecastController.cs
+================================================================================
+using Microsoft.AspNetCore.Mvc;
+
+namespace Anorath.api.Controllers
+{
+	[ApiController]
+	[Route("[controller]")]
+	public class WeatherForecastController : ControllerBase
+	{
+		private static readonly string[] Summaries =
+		[
+			"Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
+		];
+
+		[HttpGet(Name = "GetWeatherForecast")]
+		public IEnumerable<WeatherForecast> Get()
+		{
+			return Enumerable.Range(1, 5).Select(index => new WeatherForecast
+			{
+				Date = DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
+				TemperatureC = Random.Shared.Next(-20, 55),
+				Summary = Summaries[Random.Shared.Next(Summaries.Length)]
+			})
+			.ToArray();
+		}
+	}
+}
+
+================================================================================
+FILE: Anorath.api\Program.cs
+================================================================================
+using Anorath.domain.Entities;
+using Anorath.domain.Entities.Reception;
+using Anorath.Infrastructure.Data;
+using Anorath.Infrastructure.Services;
+using Microsoft.EntityFrameworkCore;
+
+
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddHttpContextAccessor();
+
+builder.Services.AddControllers();
+
+builder.Services.AddDbContext<MasterErpDbContext>(options =>
+	options.UseSqlServer(builder.Configuration.GetConnectionString("MasterErp")));
+
+builder.Services.AddScoped<ITenantService, TenantService>();
+
+builder.Services.AddScoped<TenantErpDbContext>(provider =>
+{
+	var tenantService = provider.GetRequiredService<ITenantService>();
+	var connectionString = tenantService.GetConnectionStringAsync().GetAwaiter().GetResult();
+
+	var optionsBuilder = new DbContextOptionsBuilder<TenantErpDbContext>();
+	optionsBuilder.UseSqlServer(connectionString);
+
+	return new TenantErpDbContext(optionsBuilder.Options);
+});
+
+builder.Services.AddOpenApi();
+
+var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+	app.MapOpenApi();
+}
+
+app.UseHttpsRedirection();
+app.UseAuthorization();
+app.MapControllers();
+
+app.MapPost("/companies", async (Company company, MasterErpDbContext db) =>
+{
+	db.Companies.Add(company);
+	await db.SaveChangesAsync();
+	return Results.Created($"/companies/{company.CompanyId}", company);
+});
+
+app.MapGet("/test-tenant", async (TenantErpDbContext db) =>
+{
+	var count = await db.Customers.CountAsync();
+	return Results.Ok(new { Database = db.Database.GetDbConnection().Database, CustomerCount = count });
+});
+
+// ---- Product CRUD ----
+app.MapPost("/products", async (Product product, TenantErpDbContext db) =>
+{
+	db.Products.Add(product);
+	await db.SaveChangesAsync();
+	return Results.Created($"/products/{product.ProductId}", product);
+});
+
+app.MapGet("/products", async (TenantErpDbContext db) =>
+{
+	var products = await db.Products.AsNoTracking().ToListAsync();
+	return Results.Ok(products);
+});
+
+app.MapPut("/products/{id:int}", async (int id, Product updated, TenantErpDbContext db) =>
+{
+	var product = await db.Products.FindAsync(id);
+	if (product is null) return Results.NotFound();
+
+	product.ProductCode = updated.ProductCode;
+	product.ProductName = updated.ProductName;
+	product.Price = updated.Price;
+	product.IsActive = updated.IsActive;
+
+	await db.SaveChangesAsync();
+	return Results.Ok(product);
+});
+
+app.MapDelete("/products/{id:int}", async (int id, TenantErpDbContext db) =>
+{
+	var product = await db.Products.FindAsync(id);
+	if (product is null) return Results.NotFound();
+
+	db.Products.Remove(product);
+	await db.SaveChangesAsync();
+	return Results.NoContent();
+});
+
+// ---- Customer CRUD ----
+app.MapPost("/customers", async (Customer customer, TenantErpDbContext db) =>
+{
+	db.Customers.Add(customer);
+	await db.SaveChangesAsync();
+	return Results.Created($"/customers/{customer.CustomerId}", customer);
+});
+
+app.MapGet("/customers", async (TenantErpDbContext db) =>
+{
+	var customers = await db.Customers.AsNoTracking().ToListAsync();
+	return Results.Ok(customers);
+});
+
+app.MapPut("/customers/{id:int}", async (int id, Customer updated, TenantErpDbContext db) =>
+{
+	var customer = await db.Customers.FindAsync(id);
+	if (customer is null) return Results.NotFound();
+
+	customer.CustomerCode = updated.CustomerCode;
+	customer.CustomerName = updated.CustomerName;
+	customer.ContactNumber = updated.ContactNumber;
+	customer.EmailAddress = updated.EmailAddress;
+	customer.Address = updated.Address;
+	customer.IsActive = updated.IsActive;
+
+	await db.SaveChangesAsync();
+	return Results.Ok(customer);
+});
+
+app.MapDelete("/customers/{id:int}", async (int id, TenantErpDbContext db) =>
+{
+	var customer = await db.Customers.FindAsync(id);
+	if (customer is null) return Results.NotFound();
+
+	db.Customers.Remove(customer);
+	await db.SaveChangesAsync();
+	return Results.NoContent();
+});
+
+// ---- Room CRUD ----
+app.MapPost("/rooms", async (Room room, TenantErpDbContext db) =>
+{
+	db.Rooms.Add(room);
+	await db.SaveChangesAsync();
+	return Results.Created($"/rooms/{room.RoomId}", room);
+});
+
+app.MapGet("/rooms", async (TenantErpDbContext db) =>
+{
+	var rooms = await db.Rooms.AsNoTracking().ToListAsync();
+	return Results.Ok(rooms);
+});
+
+app.MapPut("/rooms/{id:int}", async (int id, Room updated, TenantErpDbContext db) =>
+{
+	var room = await db.Rooms.FindAsync(id);
+	if (room is null) return Results.NotFound();
+
+	room.RoomNumber = updated.RoomNumber;
+	room.RoomType = updated.RoomType;
+	room.Rate = updated.Rate;
+	room.Status = updated.Status;
+	room.IsActive = updated.IsActive;
+
+	await db.SaveChangesAsync();
+	return Results.Ok(room);
+});
+
+app.MapDelete("/rooms/{id:int}", async (int id, TenantErpDbContext db) =>
+{
+	var room = await db.Rooms.FindAsync(id);
+	if (room is null) return Results.NotFound();
+
+	db.Rooms.Remove(room);
+	await db.SaveChangesAsync();
+	return Results.NoContent();
+});
+
+// ---- Reservation CRUD ----
+app.MapPost("/reservations", async (Reservations reservation, TenantErpDbContext db) =>
+{
+	db.Reservations.Add(reservation);
+	await db.SaveChangesAsync();
+	return Results.Created($"/reservations/{reservation.ReservationId}", reservation);
+});
+
+app.MapGet("/reservations", async (TenantErpDbContext db) =>
+{
+	var reservations = await db.Reservations.AsNoTracking().ToListAsync();
+	return Results.Ok(reservations);
+});
+
+app.MapPut("/reservations/{id:int}", async (int id, Reservations updated, TenantErpDbContext db) =>
+{
+	var reservation = await db.Reservations.FindAsync(id);
+	if (reservation is null) return Results.NotFound();
+
+	reservation.CustomerId = updated.CustomerId;
+	reservation.RoomId = updated.RoomId;
+	reservation.ReservationDate = updated.ReservationDate;
+	reservation.CheckIn = updated.CheckIn;
+	reservation.CheckOut = updated.CheckOut;
+	reservation.NumberOfGuests = updated.NumberOfGuests;
+	reservation.Status = updated.Status;
+	reservation.Remarks = updated.Remarks;
+
+	await db.SaveChangesAsync();
+	return Results.Ok(reservation);
+});
+
+app.MapDelete("/reservations/{id:int}", async (int id, TenantErpDbContext db) =>
+{
+	var reservation = await db.Reservations.FindAsync(id);
+	if (reservation is null) return Results.NotFound();
+
+	db.Reservations.Remove(reservation);
+	await db.SaveChangesAsync();
+	return Results.NoContent();
+});
+
+app.Run();
+
+================================================================================
+FILE: Anorath.domain\Class1.cs
+================================================================================
+namespace Anorath.domain
+{
+	public class Class1
+	{
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\Company.cs
+================================================================================
+using System;
+using System.Collections.Generic;
+
+namespace Anorath.domain.Entities
+{
+	public class Company
+	{
+		public int CompanyId { get; set; }
+
+		public string CompanyCode { get; set; } = string.Empty;
+
+		public string CompanyName { get; set; } = string.Empty;
+
+		public bool IsActive { get; set; } = true;
+
+		public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+		// Navigation property for 1-to-many relationship
+		public ICollection<Device> Devices { get; set; } = new List<Device>();
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\CompanyDatabase.cs
+================================================================================
+namespace Anorath.domain.Entities
+{
+	public class CompanyDatabase
+	{
+		public int CompanyDatabaseId { get; set; }
+
+		public int CompanyId { get; set; }
+
+		public string ServerName { get; set; } = string.Empty;
+
+		public string DatabaseName { get; set; } = string.Empty;
+
+		public string ConnectionString { get; set; } = string.Empty;
+
+		public bool IsActive { get; set; } = true;
+
+		public Company? Company { get; set; }
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\Customer.cs
+================================================================================
+using System;
+
+namespace Anorath.domain.Entities
+{
+	public class Customer
+	{
+		public int CustomerId { get; set; }
+
+		public string CustomerCode { get; set; } = string.Empty;
+
+		public string CustomerName { get; set; } = string.Empty;
+
+		public string? ContactNumber { get; set; }
+
+		public string? EmailAddress { get; set; }
+
+		public string? Address { get; set; }
+
+		public bool IsActive { get; set; } = true;
+
+		public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\Devices.cs
+================================================================================
+using System;
+
+namespace Anorath.domain.Entities
+{
+	public class Device
+	{
+		public int DeviceId { get; set; }
+
+		public int CompanyId { get; set; }
+
+		public string DeviceCode { get; set; } = string.Empty;
+
+		public string DeviceName { get; set; } = string.Empty;
+
+		public bool IsActive { get; set; } = true;
+
+		public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+		// Foreign key navigation property back to Company
+		public Company? Company { get; set; }
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\Product.cs
+================================================================================
+using System;
+
+namespace Anorath.domain.Entities
+{
+	public class Product
+	{
+		public int ProductId { get; set; }
+		public string ProductCode { get; set; } = string.Empty;
+		public string ProductName { get; set; } = string.Empty;
+		public decimal Price { get; set; }
+		public int StockQuantity { get; set; }
+		public bool IsActive { get; set; } = true;
+		public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\Billing\Billing.cs
+================================================================================
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Anorath.domain.Entities.Billing
+{
+	internal class Billing
+	{
+		public int BillingId { get; set; }
+
+		public int CustomerId { get; set; }
+
+		public decimal TotalAmount { get; set; }
+
+		public decimal AmountPaid { get; set; }
+
+		public decimal Balance { get; set; }
+
+		public string Status { get; set; } = "Unpaid";
+
+		public DateTime BillingDate { get; set; } = DateTime.UtcNow;
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\Billing\Invoice.cs
+================================================================================
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Anorath.domain.Entities.Billing
+{
+	internal class Invoice
+	{
+		public int InvoiceId { get; set; }
+
+		public int BillingId { get; set; }
+
+		public string InvoiceNumber { get; set; } = string.Empty;
+
+		public DateTime InvoiceDate { get; set; } = DateTime.UtcNow;
+
+		public decimal Amount { get; set; }
+
+		public string Status { get; set; } = "Unpaid";
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\Billing\Payment.cs
+================================================================================
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Anorath.domain.Entities.Billing
+{
+	internal class Payment
+	{
+		public int PaymentId { get; set; }
+
+		public int BillingId { get; set; }
+
+		public decimal Amount { get; set; }
+
+		public string PaymentMethod { get; set; } = string.Empty;
+
+		public DateTime PaymentDate { get; set; } = DateTime.UtcNow;
+
+		public string ReferenceNumber { get; set; } = string.Empty;
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\Role.cs
+================================================================================
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Anorath.domain.Entities
+{
+	internal class Role
+	{
+
+		public int RoleId { get; set; }
+
+		public string RoleName { get; set; } = string.Empty;
+
+		public string Description { get; set; } = string.Empty;
+
+		public bool IsActive { get; set; } = true;
+
+		public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\User.cs
+================================================================================
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Anorath.domain.Entities
+{
+	internal class User
+	{
+		public int UserId { get; set; }
+
+		public string Username { get; set; } = string.Empty;
+
+		public string PasswordHash { get; set; } = string.Empty;
+
+		public string FirstName { get; set; } = string.Empty;
+
+		public string LastName { get; set; } = string.Empty;
+
+		public string Email { get; set; } = string.Empty;
+
+		public bool IsActive { get; set; } = true;
+
+		public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\UserRole.cs
+================================================================================
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Anorath.domain.Entities
+{
+	internal class UserRole
+	{
+		public int UserRoleId { get; set; }
+
+		public int UserId { get; set; }
+
+		public int RoleId { get; set; }
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\Inventory\InventoryItem.cs
+================================================================================
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Anorath.domain.Entities.Inventory
+{
+	internal class InventoryItem
+	{
+		public int InventoryItemId { get; set; }
+
+		public string ItemCode { get; set; } = string.Empty;
+
+		public string ItemName { get; set; } = string.Empty;
+
+		public string Unit { get; set; } = string.Empty;
+
+		public decimal Quantity { get; set; }
+
+		public decimal ReorderLevel { get; set; }
+
+		public decimal UnitCost { get; set; }
+
+		public bool IsActive { get; set; } = true;
+
+		public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+		public int SupplierId { get; set; }
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\Inventory\Supplier.cs
+================================================================================
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Anorath.domain.Entities.Inventory
+{
+	internal class Supplier
+	{
+		public int SupplierId { get; set; }
+
+		public string SupplierCode { get; set; } = string.Empty;
+
+		public string SupplierName { get; set; } = string.Empty;
+
+		public string ContactPerson { get; set; } = string.Empty;
+
+		public string ContactNumber { get; set; } = string.Empty;
+
+		public string Email { get; set; } = string.Empty;
+
+		public string Address { get; set; } = string.Empty;
+
+		public bool IsActive { get; set; } = true;
+
+		public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\Reception\Customer.cs
+================================================================================
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Anorath.domain.Entities.Reception
+{
+	internal class Customer
+	{
+
+		public int CustomerId { get; set; }
+
+		public string CustomerCode { get; set; } = string.Empty;
+
+		public string FirstName { get; set; } = string.Empty;
+
+		public string LastName { get; set; } = string.Empty;
+
+		public string ContactNumber { get; set; } = string.Empty;
+
+		public string Email { get; set; } = string.Empty;
+
+		public string Address { get; set; } = string.Empty;
+
+		public bool IsActive { get; set; } = true;
+
+		public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\Reception\Reservations.cs
+================================================================================
+using System;
+
+namespace Anorath.domain.Entities.Reception
+{
+	public class Reservations
+	{
+		public int ReservationId { get; set; }
+		public int CustomerId { get; set; }
+		public int RoomId { get; set; }
+		public DateTime ReservationDate { get; set; }
+		public DateTime CheckIn { get; set; }
+		public DateTime CheckOut { get; set; }
+		public int NumberOfGuests { get; set; }
+		public string Status { get; set; } = "Pending";
+		public string Remarks { get; set; } = string.Empty;
+		public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\Reception\Room.cs
+================================================================================
+using System;
+
+namespace Anorath.domain.Entities.Reception
+{
+	public class Room
+	{
+		public int RoomId { get; set; }
+		public string RoomNumber { get; set; } = string.Empty;
+		public string RoomType { get; set; } = string.Empty;
+		public decimal Rate { get; set; }
+		public string Status { get; set; } = "Available";
+		public bool IsActive { get; set; } = true;
+		public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\restaurant\MenuCategory.cs
+================================================================================
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Anorath.domain.Entities.restaurant
+{
+	internal class MenuCategory
+	{
+		public int MenuCategoryId { get; set; }
+
+		public string CategoryName { get; set; } = string.Empty;
+
+		public string Description { get; set; } = string.Empty;
+
+		public bool IsActive { get; set; } = true;
+
+		public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+		public ICollection<MenuItem> MenuItems { get; set; }
+			= new List<MenuItem>();
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\restaurant\MenuItem.cs
+================================================================================
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Anorath.domain.Entities.restaurant
+{
+	internal class MenuItem
+	{
+
+		public int MenuItemId { get; set; }
+
+		public int MenuCategoryId { get; set; }
+
+		public string ItemCode { get; set; } = string.Empty;
+
+		public string ItemName { get; set; } = string.Empty;
+
+		public string Description { get; set; } = string.Empty;
+
+		public decimal Price { get; set; }
+
+		public bool IsAvailable { get; set; } = true;
+
+		public bool IsActive { get; set; } = true;
+
+		public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+		public MenuCategory? MenuCategory { get; set; }
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\restaurant\Order.cs
+================================================================================
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Anorath.domain.Entities.restaurant
+{
+	internal class Order
+	{
+		public int OrderId { get; set; }
+
+		public int? CustomerId { get; set; }
+
+		public string OrderNumber { get; set; } = string.Empty;
+
+		public DateTime OrderDate { get; set; } = DateTime.UtcNow;
+
+		public decimal TotalAmount { get; set; }
+
+		public string Status { get; set; } = "Pending";
+
+		public string OrderType { get; set; } = "DineIn";
+
+		public string Remarks { get; set; } = string.Empty;
+
+		public ICollection<OrderItem> OrderItems { get; set; }
+			= new List<OrderItem>();
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\restaurant\OrderItem.cs
+================================================================================
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Anorath.domain.Entities.restaurant
+{
+	internal class OrderItem
+	{
+		public int OrderItemId { get; set; }
+
+		public int OrderId { get; set; }
+
+		public int MenuItemId { get; set; }
+
+		public int Quantity { get; set; }
+
+		public decimal UnitPrice { get; set; }
+
+		public decimal SubTotal { get; set; }
+
+		public Order? Order { get; set; }
+
+		public MenuItem? MenuItem { get; set; }
+	}
+}
+
+================================================================================
+FILE: Anorath.domain\Entities\restaurant\Table.cs
+================================================================================
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Anorath.domain.Entities.restaurant
+{
+	internal class Table
+	{
+		public int TableId { get; set; }
+
+		public string TableName { get; set; } = string.Empty;
+
+		public int Capacity { get; set; }
+
+		public bool IsAvailable { get; set; } = true;
+	}
+}
+
+================================================================================
+FILE: Anorath.Infrastructure\Class1.cs
+================================================================================
+namespace Anorath.Infrastructure
+{
+	public class Class1
+	{
+	}
+}
+
+================================================================================
+FILE: Anorath.Infrastructure\Data\MasterErpDbContext.cs
+================================================================================
+using Anorath.domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace Anorath.Infrastructure.Data
+{
+	public class MasterErpDbContext : DbContext
+	{
+		public MasterErpDbContext(DbContextOptions<MasterErpDbContext> options)
+			: base(options)
+		{
+		}
+
+		public DbSet<Company> Companies => Set<Company>();
+		public DbSet<CompanyDatabase> CompanyDatabases => Set<CompanyDatabase>();
+		public DbSet<Device> Devices => Set<Device>();
+
+		protected override void OnModelCreating(ModelBuilder builder)
+		{
+			base.OnModelCreating(builder);
+
+			// Company
+			builder.Entity<Company>(entity =>
+			{
+				entity.HasKey(x => x.CompanyId);
+
+				entity.Property(x => x.CompanyCode)
+					.HasMaxLength(50)
+					.IsRequired();
+
+				entity.Property(x => x.CompanyName)
+					.HasMaxLength(200)
+					.IsRequired();
+
+				entity.HasIndex(x => x.CompanyCode)
+					.IsUnique();
+			});
+
+			// CompanyDatabase
+			builder.Entity<CompanyDatabase>(entity =>
+			{
+				entity.HasKey(x => x.CompanyDatabaseId);
+
+				entity.Property(x => x.ServerName)
+					.HasMaxLength(200)
+					.IsRequired();
+
+				entity.Property(x => x.DatabaseName)
+					.HasMaxLength(200)
+					.IsRequired();
+
+				entity.HasOne(x => x.Company)
+					.WithMany()
+					.HasForeignKey(x => x.CompanyId)
+					.OnDelete(DeleteBehavior.Restrict);
+			});
+
+			// Device
+			builder.Entity<Device>(entity =>
+			{
+				entity.HasKey(x => x.DeviceId);
+
+				entity.Property(x => x.DeviceCode)
+					.HasMaxLength(50)
+					.IsRequired();
+
+				entity.Property(x => x.DeviceName)
+					.HasMaxLength(200)
+					.IsRequired();
+
+				entity.HasOne(x => x.Company)
+					.WithMany(x => x.Devices)
+					.HasForeignKey(x => x.CompanyId)
+					.OnDelete(DeleteBehavior.Restrict);
+
+				entity.HasIndex(x => new { x.CompanyId, x.DeviceCode })
+					.IsUnique();
+			});
+
+			builder.Entity<CompanyDatabase>(entity =>
+			{
+				entity.HasKey(x => x.CompanyDatabaseId);
+
+				entity.Property(x => x.ServerName)
+					.HasMaxLength(200)
+					.IsRequired();
+
+				entity.Property(x => x.DatabaseName)
+					.HasMaxLength(200)
+					.IsRequired();
+
+				entity.Property(x => x.ConnectionString)
+					.IsRequired();
+
+				entity.HasOne(x => x.Company)
+					.WithMany()
+					.HasForeignKey(x => x.CompanyId)
+					.OnDelete(DeleteBehavior.Restrict);
+			});
+		}
+	}
+}
+
+================================================================================
+FILE: Anorath.Infrastructure\Data\MasterErpDbContextFactory.cs
+================================================================================
+using Anorath.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
+
+namespace Anorath.Infrastructure.Data
+{
+	public class MasterErpDbContextFactory : IDesignTimeDbContextFactory<MasterErpDbContext>
+	{
+		public MasterErpDbContext CreateDbContext(string[] args)
+		{
+			var optionsBuilder = new DbContextOptionsBuilder<MasterErpDbContext>();
+
+
+			optionsBuilder.UseSqlServer("Server=(localdb)\\mssqllocaldb;Database=AnorathMasterDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;");
+
+			return new MasterErpDbContext(optionsBuilder.Options);
+		}
+	}
+}
+
+================================================================================
+FILE: Anorath.Infrastructure\Data\TenantErpDbContext.cs
+================================================================================
+using Anorath.domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace Anorath.Infrastructure.Data
+{
+	public class TenantErpDbContext : DbContext
+	{
+		public TenantErpDbContext(
+			DbContextOptions<TenantErpDbContext> options)
+			: base(options)
+		{
+		}
+
+		// Tenant-specific business tables
+		public DbSet<Product> Products => Set<Product>();
+
+		public DbSet<Customer> Customers => Set<Customer>();
+
+		protected override void OnModelCreating(ModelBuilder builder)
+		{
+			base.OnModelCreating(builder);
+
+			// Product
+			builder.Entity<Product>(entity =>
+			{
+				entity.HasKey(e => e.ProductId);
+
+				entity.Property(e => e.Price)
+					.HasPrecision(18, 2);
+			});
+
+			// Customer
+			builder.Entity<Customer>(entity =>
+			{
+				entity.HasKey(e => e.CustomerId);
+
+				entity.Property(e => e.CustomerCode)
+					.HasMaxLength(50)
+					.IsRequired();
+
+				entity.Property(e => e.CustomerName)
+					.HasMaxLength(200)
+					.IsRequired();
+
+				entity.Property(e => e.ContactNumber)
+					.HasMaxLength(50);
+
+				entity.Property(e => e.EmailAddress)
+					.HasMaxLength(200);
+
+				entity.Property(e => e.Address)
+					.HasMaxLength(500);
+
+				entity.HasIndex(e => e.CustomerCode)
+					.IsUnique();
+			});
+		}
+	}
+}
+
+================================================================================
+FILE: Anorath.Infrastructure\Data\TenantErpDbContextFactory.cs
+================================================================================
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
+
+namespace Anorath.Infrastructure.Data
+{
+	public class TenantErpDbContextFactory
+		: IDesignTimeDbContextFactory<TenantErpDbContext>
+	{
+		public TenantErpDbContext CreateDbContext(string[] args)
+		{
+			var optionsBuilder =
+				new DbContextOptionsBuilder<TenantErpDbContext>();
+
+			optionsBuilder.UseSqlServer(
+				"Server=(localdb)\\mssqllocaldb;" +
+				"Database=AnorathTenantTemplateDb;" +
+				"Trusted_Connection=True;" +
+				"TrustServerCertificate=True;");
+
+			return new TenantErpDbContext(optionsBuilder.Options);
+		}
+	}
+}
+
+================================================================================
+FILE: Anorath.Infrastructure\Services\ITenantService.cs
+================================================================================
+using System.Threading.Tasks;
+
+namespace Anorath.Infrastructure.Services
+{
+	public interface ITenantService
+	{
+		string? GetTenantCode();
+
+		Task<string> GetConnectionStringAsync();
+	}
+}
+
+================================================================================
+FILE: Anorath.Infrastructure\Services\TenantServices.cs
+================================================================================
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+using Anorath.Infrastructure.Data;
+using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
+
+namespace Anorath.Infrastructure.Services
+{
+	public class TenantService : ITenantService
+	{
+		private readonly IHttpContextAccessor _httpContextAccessor;
+		private readonly MasterErpDbContext _masterDbContext;
+
+		public TenantService(
+			IHttpContextAccessor httpContextAccessor,
+			MasterErpDbContext masterDbContext)
+		{
+			_httpContextAccessor = httpContextAccessor;
+			_masterDbContext = masterDbContext;
+		}
+
+		public string? GetTenantCode()
+		{
+			var httpContext = _httpContextAccessor.HttpContext;
+
+			if (httpContext == null)
+			{
+				return null;
+			}
+
+			if (httpContext.Request.Headers.TryGetValue(
+				"X-Company-Code",
+				out var tenantCode))
+			{
+				return tenantCode.ToString();
+			}
+
+			return null;
+		}
+
+		public async Task<string> GetConnectionStringAsync()
+		{
+			var tenantCode = GetTenantCode();
+
+			if (string.IsNullOrWhiteSpace(tenantCode))
+			{
+				throw new InvalidOperationException(
+					"Tenant identifier header 'X-Company-Code' is missing in the request.");
+			}
+
+			var companyDb = await (
+				from company in _masterDbContext.Companies
+				join database in _masterDbContext.CompanyDatabases
+					on company.CompanyId equals database.CompanyId
+				where company.CompanyCode == tenantCode
+					  && company.IsActive
+					  && database.IsActive
+				select database.ConnectionString
+			).FirstOrDefaultAsync();
+
+			if (string.IsNullOrWhiteSpace(companyDb))
+			{
+				throw new InvalidOperationException(
+					$"Active database connection string not found for tenant: {tenantCode}");
+			}
+
+			return companyDb;
+		}
+	}
+}
+
+================================================================================
+FILE: ERP\Program.cs (Windforms)
+================================================================================
+namespace ERP
+{
+	internal static class Program
+	{
+		/// <summary>
+		///  The main entry point for the application.
+		/// </summary>
+		[STAThread]
+		static void Main()
+		{
+			// To customize application configuration such as set high DPI settings or default font,
+			// see https://aka.ms/applicationconfiguration.
+			ApplicationConfiguration.Initialize();
+			Application.Run(new Form1());
+		}
+	}
+}
+
+================================================================================
+FILE: ERP\Form1.Designer.cs (Windforms)
+================================================================================
+namespace ERP
+{
+	partial class Form1
+	{
+		/// <summary>
+		///  Required designer variable.
+		/// </summary>
+		private System.ComponentModel.IContainer components = null;
+
+		/// <summary>
+		///  Clean up any resources being used.
+		/// </summary>
+		/// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
+		protected override void Dispose(bool disposing)
+		{
+			if (disposing && (components != null))
+			{
+				components.Dispose();
+			}
+			base.Dispose(disposing);
+		}
+
+		#region Windows Form Designer generated code
+
+		/// <summary>
+		///  Required method for Designer support - do not modify
+		///  the contents of this method with the code editor.
+		/// </summary>
+		private void InitializeComponent()
+		{
+			SuspendLayout();
+			// 
+			// Form1
+			// 
+			AutoScaleDimensions = new SizeF(7F, 15F);
+			AutoScaleMode = AutoScaleMode.Font;
+			ClientSize = new Size(758, 450);
+			Name = "Form1";
+			Text = "Form1";
+			Load += Form1_Load;
+			ResumeLayout(false);
+		}
+
+		#endregion
+	}
+}
+
+================================================================================
+FILE: ERP\Form1.cs (Windforms) - PART 1
+================================================================================
+using System;
+using System.Collections.Generic;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+
+namespace ERP
+{
+	public partial class Form1 : Form
+	{
+		private readonly HttpClient _http = new HttpClient { BaseAddress = new Uri("http://localhost:5166/") };
+		private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
+		{
+			PropertyNameCaseInsensitive = true
+		};
+
+		private TextBox txtCompanyCode = null!;
+		private TabControl tabControl = null!;
+
+		// Products tab controls
+		private TextBox txtProductCode = null!, txtProductName = null!, txtPrice = null!;
+		private CheckBox chkProductActive = null!;
+		private DataGridView dgvProducts = null!;
+		private Label lblProductSelectedId = null!;
+
+		// Rooms tab controls
+		private TextBox txtRoomNumber = null!, txtRoomType = null!, txtRate = null!;
+		private ComboBox cboRoomStatus = null!;
+		private CheckBox chkRoomActive = null!;
+		private DataGridView dgvRooms = null!;
+		private Label lblRoomSelectedId = null!;
+
+		// Reservations tab controls
+		private ComboBox cboResCustomer = null!, cboResRoom = null!, cboResStatus = null!;
+		private DateTimePicker dtpReservationDate = null!, dtpCheckIn = null!, dtpCheckOut = null!;
+		private NumericUpDown numGuests = null!;
+		private TextBox txtRemarks = null!;
+		private DataGridView dgvReservations = null!;
+		private Label lblReservationSelectedId = null!;
+
+		// Customers tab controls
+		private TextBox txtCustomerCode = null!, txtCustomerName = null!, txtContactNumber = null!, txtEmailAddress = null!, txtAddress = null!;
+		private CheckBox chkCustomerActive = null!;
+		private DataGridView dgvCustomers = null!;
+		private Label lblCustomerSelectedId = null!;
+
+		public Form1()
+		{
+			InitializeComponent();
+			BuildUi();
+		}
+
+		private void Form1_Load(object sender, EventArgs e)
+		{
+			// intentionally empty
+		}
+
+		private HttpRequestMessage NewRequest(HttpMethod method, string url)
+		{
+			var request = new HttpRequestMessage(method, url);
+			request.Headers.Add("X-Company-Code", txtCompanyCode.Text.Trim());
+			return request;
+		}
+
+		// ============================================================
+		// UI BUILD
+		// ============================================================
+		private void BuildUi()
+		{
+			this.Text = "Anorath Resort ERP";
+			this.Width = 900;
+			this.Height = 650;
+
+			var lblCompanyCode = new Label { Text = "Company Code:", Left = 20, Top = 15, Width = 100 };
+			txtCompanyCode = new TextBox { Left = 130, Top = 13, Width = 120, Text = "COMP-001" };
+
+			tabControl = new TabControl { Left = 20, Top = 45, Width = 840, Height = 560 };
+
+			var tabProducts = new TabPage("Products");
+			var tabRooms = new TabPage("Rooms");
+			var tabReservations = new TabPage("Reservations");
+			var tabCustomers = new TabPage("Customers");
+
+			BuildProductsTab(tabProducts);
+			BuildRoomsTab(tabRooms);
+			BuildReservationsTab(tabReservations);
+			BuildCustomersTab(tabCustomers);
+
+			tabControl.TabPages.Add(tabProducts);
+			tabControl.TabPages.Add(tabRooms);
+			tabControl.TabPages.Add(tabReservations);
+			tabControl.TabPages.Add(tabCustomers);
+
+			this.Controls.Add(lblCompanyCode);
+			this.Controls.Add(txtCompanyCode);
+			this.Controls.Add(tabControl);
+		}
+
+		// ============================================================
+		// PRODUCTS TAB
+		// ============================================================
+		private void BuildProductsTab(TabPage tab)
+		{
+			var lblProductCode = new Label { Text = "Product Code:", Left = 20, Top = 20, Width = 100 };
+			txtProductCode = new TextBox { Left = 130, Top = 18, Width = 150 };
+
+			var lblProductName = new Label { Text = "Product Name:", Left = 300, Top = 20, Width = 100 };
+			txtProductName = new TextBox { Left = 400, Top = 18, Width = 200 };
+
+			var lblPrice = new Label { Text = "Price:", Left = 20, Top = 55, Width = 100 };
+			txtPrice = new TextBox { Left = 130, Top = 53, Width = 100 };
+
+			chkProductActive = new CheckBox { Text = "Active", Left = 300, Top = 55, Width = 80, Checked = true };
+
+			lblProductSelectedId = new Label { Text = "Selected ProductId: (none)", Left = 20, Top = 85, Width = 300 };
+
+			var btnLoad = new Button { Text = "Load Products", Left = 20, Top = 115, Width = 120 };
+			var btnAdd = new Button { Text = "Add", Left = 150, Top = 115, Width = 80 };
+			var btnUpdate = new Button { Text = "Update Selected", Left = 240, Top = 115, Width = 130 };
+			var btnDelete = new Button { Text = "Delete Selected", Left = 380, Top = 115, Width = 130 };
+			var btnClear = new Button { Text = "Clear Form", Left = 520, Top = 115, Width = 100 };
+
+			dgvProducts = new DataGridView
+			{
+				Left = 20,
+				Top = 150,
+				Width = 780,
+				Height = 350,
+				ReadOnly = true,
+				AllowUserToAddRows = false,
+				SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+				MultiSelect = false,
+				AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
+			};
+
+			btnLoad.Click += async (s, e) => await LoadProductsAsync();
+			btnAdd.Click += async (s, e) => await AddProductAsync();
+			btnUpdate.Click += async (s, e) => await UpdateProductAsync();
+			btnDelete.Click += async (s, e) => await DeleteProductAsync();
+			btnClear.Click += (s, e) => ClearProductInputs();
+			dgvProducts.SelectionChanged += DgvProducts_SelectionChanged;
+
+			tab.Controls.Add(lblProductCode);
+			tab.Controls.Add(txtProductCode);
+			tab.Controls.Add(lblProductName);
+			tab.Controls.Add(txtProductName);
+			tab.Controls.Add(lblPrice);
+			tab.Controls.Add(txtPrice);
+			tab.Controls.Add(chkProductActive);
+			tab.Controls.Add(lblProductSelectedId);
+			tab.Controls.Add(btnLoad);
+			tab.Controls.Add(btnAdd);
+			tab.Controls.Add(btnUpdate);
+			tab.Controls.Add(btnDelete);
+			tab.Controls.Add(btnClear);
+			tab.Controls.Add(dgvProducts);
+		}
+
+		private async Task LoadProductsAsync()
+		{
+			try
+			{
+				var request = NewRequest(HttpMethod.Get, "products");
+				var response = await _http.SendAsync(request);
+				response.EnsureSuccessStatusCode();
+				var json = await response.Content.ReadAsStringAsync();
+				var products = JsonSerializer.Deserialize<List<dynamic>>(json, JsonOptions);
+				dgvProducts.DataSource = products;
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show("Failed to load products: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+		}
+
+		private async Task AddProductAsync()
+		{
+			if (string.IsNullOrWhiteSpace(txtProductCode.Text) || string.IsNullOrWhiteSpace(txtProductName.Text))
+			{
+				MessageBox.Show("Product Code and Product Name are required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+			if (!decimal.TryParse(txtPrice.Text, out var price))
+			{
+				MessageBox.Show("Price must be a valid number.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+
+			var newProduct = new
+			{
+				productCode = txtProductCode.Text.Trim(),
+				productName = txtProductName.Text.Trim(),
+				price,
+				stockQuantity = 0,
+				isActive = chkProductActive.Checked,
+				createdAt = DateTime.UtcNow
+			};
+
+			try
+			{
+				var request = NewRequest(HttpMethod.Post, "products");
+				request.Content = new StringContent(JsonSerializer.Serialize(newProduct), Encoding.UTF8, "application/json");
+				var response = await _http.SendAsync(request);
+				response.EnsureSuccessStatusCode();
+				MessageBox.Show("Product added.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+				ClearProductInputs();
+				await LoadProductsAsync();
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show("Failed to add product: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+		}
+
+		private async Task UpdateProductAsync()
+		{
+			if (dgvProducts.CurrentRow == null)
+			{
+				MessageBox.Show("Select a product first.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+			if (string.IsNullOrWhiteSpace(txtProductCode.Text) || string.IsNullOrWhiteSpace(txtProductName.Text))
+			{
+				MessageBox.Show("Product Code and Product Name are required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+			if (!decimal.TryParse(txtPrice.Text, out var price))
+			{
+				MessageBox.Show("Price must be a valid number.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+
+			var id = (int)dgvProducts.CurrentRow.Cells["ProductId"].Value;
+			var updated = new
+			{
+				productCode = txtProductCode.Text.Trim(),
+				productName = txtProductName.Text.Trim(),
+				price,
+				isActive = chkProductActive.Checked
+			};
+
+			try
+			{
+				var request = NewRequest(HttpMethod.Put, $"products/{id}");
+				request.Content = new StringContent(JsonSerializer.Serialize(updated), Encoding.UTF8, "application/json");
+				var response = await _http.SendAsync(request);
+				response.EnsureSuccessStatusCode();
+				MessageBox.Show("Product updated.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+				ClearProductInputs();
+				await LoadProductsAsync();
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show("Failed to update product: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+		}
+
+		private async Task DeleteProductAsync()
+		{
+			if (dgvProducts.CurrentRow == null)
+			{
+				MessageBox.Show("Select a product first.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+			var id = (int)dgvProducts.CurrentRow.Cells["ProductId"].Value;
+			if (MessageBox.Show("Delete this product?", "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+
+			try
+			{
+				var request = NewRequest(HttpMethod.Delete, $"products/{id}");
+				var response = await _http.SendAsync(request);
+				response.EnsureSuccessStatusCode();
+				MessageBox.Show("Product deleted.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+				ClearProductInputs();
+				await LoadProductsAsync();
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show("Failed to delete product: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+		}
+
+		private void DgvProducts_SelectionChanged(object? sender, EventArgs e)
+		{
+			if (dgvProducts.CurrentRow == null) return;
+			var row = dgvProducts.CurrentRow;
+			txtProductCode.Text = row.Cells["ProductCode"].Value?.ToString() ?? "";
+			txtProductName.Text = row.Cells["ProductName"].Value?.ToString() ?? "";
+			txtPrice.Text = row.Cells["Price"].Value?.ToString() ?? "";
+			chkProductActive.Checked = row.Cells["IsActive"].Value is bool b && b;
+			lblProductSelectedId.Text = $"Selected ProductId: {row.Cells["ProductId"].Value}";
+		}
+
+		private void ClearProductInputs()
+		{
+			txtProductCode.Clear(); txtProductName.Clear(); txtPrice.Clear();
+			chkProductActive.Checked = true;
+			lblProductSelectedId.Text = "Selected ProductId: (none)";
+		}
+
+		// ============================================================
+		// ROOMS TAB
+		// ============================================================
+		private void BuildRoomsTab(TabPage tab)
+		{
+			var lblRoomNumber = new Label { Text = "Room Number:", Left = 20, Top = 20, Width = 100 };
+			txtRoomNumber = new TextBox { Left = 130, Top = 18, Width = 150 };
+
+			var lblRoomType = new Label { Text = "Room Type:", Left = 300, Top = 20, Width = 100 };
+			txtRoomType = new TextBox { Left = 400, Top = 18, Width = 200 };
+
+			var lblRate = new Label { Text = "Rate:", Left = 20, Top = 55, Width = 100 };
+			txtRate = new TextBox { Left = 130, Top = 53, Width = 100 };
+
+			var lblStatus = new Label { Text = "Status:", Left = 300, Top = 55, Width = 100 };
+			cboRoomStatus = new ComboBox { Left = 400, Top = 53, Width = 200, DropDownStyle = ComboBoxStyle.DropDownList };
+			cboRoomStatus.Items.AddRange(new[] { "Available", "Occupied", "Maintenance", "Blocked" });
+			cboRoomStatus.SelectedIndex = 0;
+
+			chkRoomActive = new CheckBox { Text = "Active", Left = 20, Top = 90, Width = 80, Checked = true };
+
+			lblRoomSelectedId = new Label { Text = "Selected RoomId: (none)", Left = 20, Top = 120, Width = 300 };
+
+			var btnLoad = new Button { Text = "Load Rooms", Left = 20, Top = 150, Width = 120 };
+			var btnAdd = new Button { Text = "Add", Left = 150, Top = 150, Width = 80 };
+			var btnUpdate = new Button { Text = "Update Selected", Left = 240, Top = 150, Width = 130 };
+			var btnDelete = new Button { Text = "Delete Selected", Left = 380, Top = 150, Width = 130 };
+			var btnClear = new Button { Text = "Clear Form", Left = 520, Top = 150, Width = 100 };
+
+			dgvRooms = new DataGridView
+			{
+				Left = 20,
+				Top = 185,
+				Width = 780,
+				Height = 315,
+				ReadOnly = true,
+				AllowUserToAddRows = false,
+				SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+				MultiSelect = false,
+				AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
+			};
+
+			btnLoad.Click += async (s, e) => await LoadRoomsAsync();
+			btnAdd.Click += async (s, e) => await AddRoomAsync();
+			btnUpdate.Click += async (s, e) => await UpdateRoomAsync();
+			btnDelete.Click += async (s, e) => await DeleteRoomAsync();
+			btnClear.Click += (s, e) => ClearRoomInputs();
+			dgvRooms.SelectionChanged += DgvRooms_SelectionChanged;
+
+			tab.Controls.Add(lblRoomNumber);
+			tab.Controls.Add(txtRoomNumber);
+			tab.Controls.Add(lblRoomType);
+			tab.Controls.Add(txtRoomType);
+			tab.Controls.Add(lblRate);
+			tab.Controls.Add(txtRate);
+			tab.Controls.Add(lblStatus);
+			tab.Controls.Add(cboRoomStatus);
+			tab.Controls.Add(chkRoomActive);
+			tab.Controls.Add(lblRoomSelectedId);
+			tab.Controls.Add(btnLoad);
+			tab.Controls.Add(btnAdd);
+			tab.Controls.Add(btnUpdate);
+			tab.Controls.Add(btnDelete);
+			tab.Controls.Add(btnClear);
+			tab.Controls.Add(dgvRooms);
+		}
+
+		private async Task LoadRoomsAsync()
+		{
+			try
+			{
+				var request = NewRequest(HttpMethod.Get, "rooms");
+				var response = await _http.SendAsync(request);
+				response.EnsureSuccessStatusCode();
+				var json = await response.Content.ReadAsStringAsync();
+				var rooms = JsonSerializer.Deserialize<List<dynamic>>(json, JsonOptions);
+				dgvRooms.DataSource = rooms;
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show("Failed to load rooms: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+		}
+
+		private async Task AddRoomAsync()
+		{
+			if (string.IsNullOrWhiteSpace(txtRoomNumber.Text) || string.IsNullOrWhiteSpace(txtRoomType.Text))
+			{
+				MessageBox.Show("Room Number and Room Type are required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+			if (!decimal.TryParse(txtRate.Text, out var rate))
+			{
+				MessageBox.Show("Rate must be a valid number.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+
+			var newRoom = new
+			{
+				roomNumber = txtRoomNumber.Text.Trim(),
+				roomType = txtRoomType.Text.Trim(),
+				rate,
+				status = cboRoomStatus.SelectedItem?.ToString() ?? "Available",
+				isActive = chkRoomActive.Checked,
+				createdAt = DateTime.UtcNow
+			};
+
+			try
+			{
+				var request = NewRequest(HttpMethod.Post, "rooms");
+				request.Content = new StringContent(JsonSerializer.Serialize(newRoom), Encoding.UTF8, "application/json");
+				var response = await _http.SendAsync(request);
+				response.EnsureSuccessStatusCode();
+				MessageBox.Show("Room added.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+				ClearRoomInputs();
+				await LoadRoomsAsync();
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show("Failed to add room: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+		}
+
+		private async Task UpdateRoomAsync()
+		{
+			if (dgvRooms.CurrentRow == null)
+			{
+				MessageBox.Show("Select a room first.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+			if (string.IsNullOrWhiteSpace(txtRoomNumber.Text) || string.IsNullOrWhiteSpace(txtRoomType.Text))
+			{
+				MessageBox.Show("Room Number and Room Type are required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+			if (!decimal.TryParse(txtRate.Text, out var rate))
+			{
+				MessageBox.Show("Rate must be a valid number.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+
+			var id = (int)dgvRooms.CurrentRow.Cells["RoomId"].Value;
+			var updated = new
+			{
+				roomNumber = txtRoomNumber.Text.Trim(),
+				roomType = txtRoomType.Text.Trim(),
+				rate,
+				status = cboRoomStatus.SelectedItem?.ToString() ?? "Available",
+				isActive = chkRoomActive.Checked
+			};
+
+			try
+			{
+				var request = NewRequest(HttpMethod.Put, $"rooms/{id}");
+				request.Content = new StringContent(JsonSerializer.Serialize(updated), Encoding.UTF8, "application/json");
+				var response = await _http.SendAsync(request);
+				response.EnsureSuccessStatusCode();
+				MessageBox.Show("Room updated.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+				ClearRoomInputs();
+				await LoadRoomsAsync();
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show("Failed to update room: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+		}
+
+		private async Task DeleteRoomAsync()
+		{
+			if (dgvRooms.CurrentRow == null)
+			{
+				MessageBox.Show("Select a room first.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+			var id = (int)dgvRooms.CurrentRow.Cells["RoomId"].Value;
+			if (MessageBox.Show("Delete this room?", "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+
+			try
+			{
+				var request = NewRequest(HttpMethod.Delete, $"rooms/{id}");
+				var response = await _http.SendAsync(request);
+				response.EnsureSuccessStatusCode();
+				MessageBox.Show("Room deleted.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+				ClearRoomInputs();
+				await LoadRoomsAsync();
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show("Failed to delete room: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+		}
+
+		private void DgvRooms_SelectionChanged(object? sender, EventArgs e)
+		{
+			if (dgvRooms.CurrentRow == null) return;
+			var row = dgvRooms.CurrentRow;
+			txtRoomNumber.Text = row.Cells["RoomNumber"].Value?.ToString() ?? "";
+			txtRoomType.Text = row.Cells["RoomType"].Value?.ToString() ?? "";
+			txtRate.Text = row.Cells["Rate"].Value?.ToString() ?? "";
+			cboRoomStatus.SelectedItem = row.Cells["Status"].Value?.ToString() ?? "Available";
+			chkRoomActive.Checked = row.Cells["IsActive"].Value is bool b && b;
+			lblRoomSelectedId.Text = $"Selected RoomId: {row.Cells["RoomId"].Value}";
+		}
+
+		private void ClearRoomInputs()
+		{
+			txtRoomNumber.Clear(); txtRoomType.Clear(); txtRate.Clear();
+			cboRoomStatus.SelectedIndex = 0;
+			chkRoomActive.Checked = true;
+			lblRoomSelectedId.Text = "Selected RoomId: (none)";
+		}
+
+		// ============================================================
+		// RESERVATIONS TAB
+		// ============================================================
+		private void BuildReservationsTab(TabPage tab)
+		{
+			var lblCustomer = new Label { Text = "Customer:", Left = 20, Top = 20, Width = 90 };
+			cboResCustomer = new ComboBox { Left = 120, Top = 18, Width = 220, DropDownStyle = ComboBoxStyle.DropDownList };
+
+			var lblRoom = new Label { Text = "Room:", Left = 360, Top = 20, Width = 60 };
+			cboResRoom = new ComboBox { Left = 430, Top = 18, Width = 220, DropDownStyle = ComboBoxStyle.DropDownList };
+
+			var lblResDate = new Label { Text = "Reservation Date:", Left = 20, Top = 55, Width = 100 };
+			dtpReservationDate = new DateTimePicker { Left = 130, Top = 53, Width = 150 };
+
+			var lblCheckIn = new Label { Text = "Check-In:", Left = 300, Top = 55, Width = 70 };
+			dtpCheckIn = new DateTimePicker { Left = 380, Top = 53, Width = 150 };
+
+			var lblCheckOut = new Label { Text = "Check-Out:", Left = 550, Top = 55, Width = 70 };
+			dtpCheckOut = new DateTimePicker { Left = 630, Top = 53, Width = 150 };
+
+			var lblGuests = new Label { Text = "Guests:", Left = 20, Top = 90, Width = 90 };
+			numGuests = new NumericUpDown { Left = 120, Top = 88, Width = 60, Minimum = 1, Maximum = 20, Value = 1 };
+
+			var lblResStatus = new Label { Text = "Status:", Left = 200, Top = 90, Width = 60 };
+			cboResStatus = new ComboBox { Left = 260, Top = 88, Width = 150, DropDownStyle = ComboBoxStyle.DropDownList };
+			cboResStatus.Items.AddRange(new[] { "Pending", "Confirmed", "CheckedIn", "CheckedOut", "Cancelled" });
+			cboResStatus.SelectedIndex = 0;
+
+			var lblRemarks = new Label { Text = "Remarks:", Left = 430, Top = 90, Width = 70 };
+			txtRemarks = new TextBox { Left = 510, Top = 88, Width = 270 };
+
+			lblReservationSelectedId = new Label { Text = "Selected ReservationId: (none)", Left = 20, Top = 120, Width = 300 };
+
+			var btnLoad = new Button { Text = "Load Reservations", Left = 20, Top = 150, Width = 140 };
+			var btnAdd = new Button { Text = "Add", Left = 170, Top = 150, Width = 80 };
+			var btnUpdate = new Button { Text = "Update Selected", Left = 260, Top = 150, Width = 130 };
+			var btnDelete = new Button { Text = "Delete Selected", Left = 400, Top = 150, Width = 130 };
+			var btnClear = new Button { Text = "Clear Form", Left = 540, Top = 150, Width = 100 };
+
+			dgvReservations = new DataGridView
+			{
+				Left = 20,
+				Top = 185,
+				Width = 780,
+				Height = 315,
+				ReadOnly = true,
+				AllowUserToAddRows = false,
+				SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+				MultiSelect = false,
+				AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
+			};
+
+			btnLoad.Click += async (s, e) => await LoadReservationsAsync();
+			btnAdd.Click += async (s, e) => await AddReservationAsync();
+			btnUpdate.Click += async (s, e) => await UpdateReservationAsync();
+			btnDelete.Click += async (s, e) => await DeleteReservationAsync();
+			btnClear.Click += (s, e) => ClearReservationInputs();
+			dgvReservations.SelectionChanged += DgvReservations_SelectionChanged;
+
+			tab.Controls.Add(lblCustomer);
+			tab.Controls.Add(cboResCustomer);
+			tab.Controls.Add(lblRoom);
+			tab.Controls.Add(cboResRoom);
+			tab.Controls.Add(lblResDate);
+			tab.Controls.Add(dtpReservationDate);
+			tab.Controls.Add(lblCheckIn);
+			tab.Controls.Add(dtpCheckIn);
+			tab.Controls.Add(lblCheckOut);
+			tab.Controls.Add(dtpCheckOut);
+			tab.Controls.Add(lblGuests);
+			tab.Controls.Add(numGuests);
+			tab.Controls.Add(lblResStatus);
+			tab.Controls.Add(cboResStatus);
+			tab.Controls.Add(lblRemarks);
+			tab.Controls.Add(txtRemarks);
+			tab.Controls.Add(lblReservationSelectedId);
+			tab.Controls.Add(btnLoad);
+			tab.Controls.Add(btnAdd);
+			tab.Controls.Add(btnUpdate);
+			tab.Controls.Add(btnDelete);
+			tab.Controls.Add(btnClear);
+			tab.Controls.Add(dgvReservations);
+		}
+
+		private async Task LoadReservationsAsync()
+		{
+			try
+			{
+				var request = NewRequest(HttpMethod.Get, "reservations");
+				var response = await _http.SendAsync(request);
+				response.EnsureSuccessStatusCode();
+				var json = await response.Content.ReadAsStringAsync();
+				var reservations = JsonSerializer.Deserialize<List<dynamic>>(json, JsonOptions);
+				dgvReservations.DataSource = reservations;
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show("Failed to load reservations: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+		}
+
+		private async Task AddReservationAsync()
+		{
+			if (cboResCustomer.SelectedItem == null || cboResRoom.SelectedItem == null)
+			{
+				MessageBox.Show("Customer and Room are required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+
+			var newReservation = new
+			{
+				customerId = (int)cboResCustomer.SelectedValue,
+				roomId = (int)cboResRoom.SelectedValue,
+				reservationDate = dtpReservationDate.Value,
+				checkIn = dtpCheckIn.Value,
+				checkOut = dtpCheckOut.Value,
+				numberOfGuests = (int)numGuests.Value,
+				status = cboResStatus.SelectedItem?.ToString() ?? "Pending",
+				remarks = txtRemarks.Text.Trim(),
+				createdAt = DateTime.UtcNow
+			};
+
+			try
+			{
+				var request = NewRequest(HttpMethod.Post, "reservations");
+				request.Content = new StringContent(JsonSerializer.Serialize(newReservation), Encoding.UTF8, "application/json");
+				var response = await _http.SendAsync(request);
+				response.EnsureSuccessStatusCode();
+				MessageBox.Show("Reservation added.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+				ClearReservationInputs();
+				await LoadReservationsAsync();
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show("Failed to add reservation: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+		}
+
+		private async Task UpdateReservationAsync()
+		{
+			if (dgvReservations.CurrentRow == null)
+			{
+				MessageBox.Show("Select a reservation first.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+			if (cboResCustomer.SelectedItem == null || cboResRoom.SelectedItem == null)
+			{
+				MessageBox.Show("Customer and Room are required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+
+			var id = (int)dgvReservations.CurrentRow.Cells["ReservationId"].Value;
+			var updated = new
+			{
+				customerId = (int)cboResCustomer.SelectedValue,
+				roomId = (int)cboResRoom.SelectedValue,
+				reservationDate = dtpReservationDate.Value,
+				checkIn = dtpCheckIn.Value,
+				checkOut = dtpCheckOut.Value,
+				numberOfGuests = (int)numGuests.Value,
+				status = cboResStatus.SelectedItem?.ToString() ?? "Pending",
+				remarks = txtRemarks.Text.Trim()
+			};
+
+			try
+			{
+				var request = NewRequest(HttpMethod.Put, $"reservations/{id}");
+				request.Content = new StringContent(JsonSerializer.Serialize(updated), Encoding.UTF8, "application/json");
+				var response = await _http.SendAsync(request);
+				response.EnsureSuccessStatusCode();
+				MessageBox.Show("Reservation updated.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+				ClearReservationInputs();
+				await LoadReservationsAsync();
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show("Failed to update reservation: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+		}
+
+		private async Task DeleteReservationAsync()
+		{
+			if (dgvReservations.CurrentRow == null)
+			{
+				MessageBox.Show("Select a reservation first.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+			var id = (int)dgvReservations.CurrentRow.Cells["ReservationId"].Value;
+			if (MessageBox.Show("Delete this reservation?", "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+
+			try
+			{
+				var request = NewRequest(HttpMethod.Delete, $"reservations/{id}");
+				var response = await _http.SendAsync(request);
+				response.EnsureSuccessStatusCode();
+				MessageBox.Show("Reservation deleted.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+				ClearReservationInputs();
+				await LoadReservationsAsync();
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show("Failed to delete reservation: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+		}
+
+		private void DgvReservations_SelectionChanged(object? sender, EventArgs e)
+		{
+			if (dgvReservations.CurrentRow == null) return;
+			var row = dgvReservations.CurrentRow;
+			var customerId = row.Cells["CustomerId"].Value;
+			var roomId = row.Cells["RoomId"].Value;
+			if (customerId != null) cboResCustomer.SelectedValue = customerId;
+			if (roomId != null) cboResRoom.SelectedValue = roomId;
+			dtpReservationDate.Value = row.Cells["ReservationDate"].Value is DateTime dt ? dt : DateTime.Now;
+			dtpCheckIn.Value = row.Cells["CheckIn"].Value is DateTime dt2 ? dt2 : DateTime.Now;
+			dtpCheckOut.Value = row.Cells["CheckOut"].Value is DateTime dt3 ? dt3 : DateTime.Now;
+			numGuests.Value = row.Cells["NumberOfGuests"].Value is int n ? n : 1;
+			cboResStatus.SelectedItem = row.Cells["Status"].Value?.ToString() ?? "Pending";
+			txtRemarks.Text = row.Cells["Remarks"].Value?.ToString() ?? "";
+			lblReservationSelectedId.Text = $"Selected ReservationId: {row.Cells["ReservationId"].Value}";
+		}
+
+		private void ClearReservationInputs()
+		{
+			cboResCustomer.SelectedIndex = -1;
+			cboResRoom.SelectedIndex = -1;
+			dtpReservationDate.Value = DateTime.Now;
+			dtpCheckIn.Value = DateTime.Now;
+			dtpCheckOut.Value = DateTime.Now.AddDays(1);
+			numGuests.Value = 1;
+			cboResStatus.SelectedIndex = 0;
+			txtRemarks.Clear();
+			lblReservationSelectedId.Text = "Selected ReservationId: (none)";
+		}
+
+		// ============================================================
+		// CUSTOMERS TAB
+		// ============================================================
+		private void BuildCustomersTab(TabPage tab)
+		{
+			var lblCustomerCode = new Label { Text = "Customer Code:", Left = 20, Top = 20, Width = 100 };
+			txtCustomerCode = new TextBox { Left = 130, Top = 18, Width = 150 };
+
+			var lblCustomerName = new Label { Text = "Customer Name:", Left = 300, Top = 20, Width = 100 };
+			txtCustomerName = new TextBox { Left = 400, Top = 18, Width = 200 };
+
+			var lblContactNumber = new Label { Text = "Contact Number:", Left = 20, Top = 55, Width = 100 };
+			txtContactNumber = new TextBox { Left = 130, Top = 53, Width = 150 };
+
+			var lblEmailAddress = new Label { Text = "Email Address:", Left = 300, Top = 55, Width = 100 };
+			txtEmailAddress = new TextBox { Left = 400, Top = 53, Width = 200 };
+
+			var lblAddress = new Label { Text = "Address:", Left = 20, Top = 90, Width = 100 };
+			txtAddress = new TextBox { Left = 130, Top = 88, Width = 470 };
+
+			chkCustomerActive = new CheckBox { Text = "Active", Left = 20, Top = 125, Width = 80, Checked = true };
+
+			lblCustomerSelectedId = new Label { Text = "Selected CustomerId: (none)", Left = 20, Top = 155, Width = 300 };
+
+			var btnLoad = new Button { Text = "Load Customers", Left = 20, Top = 185, Width = 140 };
+			var btnAdd = new Button { Text = "Add", Left = 170, Top = 185, Width = 80 };
+			var btnUpdate = new Button { Text = "Update Selected", Left = 260, Top = 185, Width = 130 };
+			var btnDelete = new Button { Text = "Delete Selected", Left = 400, Top = 185, Width = 130 };
+			var btnClear = new Button { Text = "Clear Form", Left = 540, Top = 185, Width = 100 };
+
+			dgvCustomers = new DataGridView
+			{
+				Left = 20,
+				Top = 220,
+				Width = 780,
+				Height = 280,
+				ReadOnly = true,
+				AllowUserToAddRows = false,
+				SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+				MultiSelect = false,
+				AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
+			};
+
+			btnLoad.Click += async (s, e) => await LoadCustomersAsync();
+			btnAdd.Click += async (s, e) => await AddCustomerAsync();
+			btnUpdate.Click += async (s, e) => await UpdateCustomerAsync();
+			btnDelete.Click += async (s, e) => await DeleteCustomerAsync();
+			btnClear.Click += (s, e) => ClearCustomerInputs();
+			dgvCustomers.SelectionChanged += DgvCustomers_SelectionChanged;
+
+			tab.Controls.Add(lblCustomerCode);
+			tab.Controls.Add(txtCustomerCode);
+			tab.Controls.Add(lblCustomerName);
+			tab.Controls.Add(txtCustomerName);
+			tab.Controls.Add(lblContactNumber);
+			tab.Controls.Add(txtContactNumber);
+			tab.Controls.Add(lblEmailAddress);
+			tab.Controls.Add(txtEmailAddress);
+			tab.Controls.Add(lblAddress);
+			tab.Controls.Add(txtAddress);
+			tab.Controls.Add(chkCustomerActive);
+			tab.Controls.Add(lblCustomerSelectedId);
+			tab.Controls.Add(btnLoad);
+			tab.Controls.Add(btnAdd);
+			tab.Controls.Add(btnUpdate);
+			tab.Controls.Add(btnDelete);
+			tab.Controls.Add(btnClear);
+			tab.Controls.Add(dgvCustomers);
+		}
+
+		private async Task LoadCustomersAsync()
+		{
+			try
+			{
+				var request = NewRequest(HttpMethod.Get, "customers");
+				var response = await _http.SendAsync(request);
+				response.EnsureSuccessStatusCode();
+				var json = await response.Content.ReadAsStringAsync();
+				var customers = JsonSerializer.Deserialize<List<dynamic>>(json, JsonOptions);
+				dgvCustomers.DataSource = customers;
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show("Failed to load customers: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+		}
+
+		private async Task AddCustomerAsync()
+		{
+			if (string.IsNullOrWhiteSpace(txtCustomerCode.Text) || string.IsNullOrWhiteSpace(txtCustomerName.Text))
+			{
+				MessageBox.Show("Customer Code and Customer Name are required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+
+			var newCustomer = new
+			{
+				customerCode = txtCustomerCode.Text.Trim(),
+				customerName = txtCustomerName.Text.Trim(),
+				contactNumber = txtContactNumber.Text.Trim(),
+				emailAddress = txtEmailAddress.Text.Trim(),
+				address = txtAddress.Text.Trim(),
+				isActive = chkCustomerActive.Checked,
+				createdAt = DateTime.UtcNow
+			};
+
+			try
+			{
+				var request = NewRequest(HttpMethod.Post, "customers");
+				request.Content = new StringContent(JsonSerializer.Serialize(newCustomer), Encoding.UTF8, "application/json");
+				var response = await _http.SendAsync(request);
+				response.EnsureSuccessStatusCode();
+				MessageBox.Show("Customer added.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+				ClearCustomerInputs();
+				await LoadCustomersAsync();
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show("Failed to add customer: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+		}
+
+		private async Task UpdateCustomerAsync()
+		{
+			if (dgvCustomers.CurrentRow == null)
+			{
+				MessageBox.Show("Select a customer first.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+			if (string.IsNullOrWhiteSpace(txtCustomerCode.Text) || string.IsNullOrWhiteSpace(txtCustomerName.Text))
+			{
+				MessageBox.Show("Customer Code and Customer Name are required.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+
+			var id = (int)dgvCustomers.CurrentRow.Cells["CustomerId"].Value;
+			var updated = new
+			{
+				customerCode = txtCustomerCode.Text.Trim(),
+				customerName = txtCustomerName.Text.Trim(),
+				contactNumber = txtContactNumber.Text.Trim(),
+				emailAddress = txtEmailAddress.Text.Trim(),
+				address = txtAddress.Text.Trim(),
+				isActive = chkCustomerActive.Checked
+			};
+
+			try
+			{
+				var request = NewRequest(HttpMethod.Put, $"customers/{id}");
+				request.Content = new StringContent(JsonSerializer.Serialize(updated), Encoding.UTF8, "application/json");
+				var response = await _http.SendAsync(request);
+				response.EnsureSuccessStatusCode();
+				MessageBox.Show("Customer updated.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+				ClearCustomerInputs();
+				await LoadCustomersAsync();
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show("Failed to update customer: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+		}
+
+		private async Task DeleteCustomerAsync()
+		{
+			if (dgvCustomers.CurrentRow == null)
+			{
+				MessageBox.Show("Select a customer first.", "Validation", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+				return;
+			}
+			var id = (int)dgvCustomers.CurrentRow.Cells["CustomerId"].Value;
+			if (MessageBox.Show("Delete this customer?", "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+
+			try
+			{
+				var request = NewRequest(HttpMethod.Delete, $"customers/{id}");
+				var response = await _http.SendAsync(request);
+				response.EnsureSuccessStatusCode();
+				MessageBox.Show("Customer deleted.", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+				ClearCustomerInputs();
+				await LoadCustomersAsync();
+			}
+			catch (Exception ex)
+			{
+				MessageBox.Show("Failed to delete customer: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+		}
+
+		private void DgvCustomers_SelectionChanged(object? sender, EventArgs e)
+		{
+			if (dgvCustomers.CurrentRow == null) return;
+			var row = dgvCustomers.CurrentRow;
+			txtCustomerCode.Text = row.Cells["CustomerCode"].Value?.ToString() ?? "";
+			txtCustomerName.Text = row.Cells["CustomerName"].Value?.ToString() ?? "";
+			txtContactNumber.Text = row.Cells["ContactNumber"].Value?.ToString() ?? "";
+			txtEmailAddress.Text = row.Cells["EmailAddress"].Value?.ToString() ?? "";
+			txtAddress.Text = row.Cells["Address"].Value?.ToString() ?? "";
+			chkCustomerActive.Checked = row.Cells["IsActive"].Value is bool b && b;
+			lblCustomerSelectedId.Text = $"Selected CustomerId: {row.Cells["CustomerId"].Value}";
+		}
+
+		private void ClearCustomerInputs()
+		{
+			txtCustomerCode.Clear(); txtCustomerName.Clear(); txtContactNumber.Clear();
+			txtEmailAddress.Clear(); txtAddress.Clear();
+			chkCustomerActive.Checked = true;
+			lblCustomerSelectedId.Text = "Selected CustomerId: (none)";
+		}
+	}
+}
+
+================================================================================
+END OF COMPLETE PROJECT FILE
+================================================================================
+This file contains all source code from:
+- Anorath.api (ASP.NET Core API)
+- Anorath.domain (Entity Models)
+- Anorath.Infrastructure (Data Context and Services)
+- ERP (Windows Forms Desktop Application)
+- Configuration files (appsettings.json, launchSettings.json)
+- All CRUD operations for Products, Rooms, Reservations, and Customers
+================================================================================

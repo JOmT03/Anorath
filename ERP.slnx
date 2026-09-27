@@ -1,0 +1,10 @@
+<Solution>
+  <Project Path="Anorath.api/Anorath.api.csproj" />
+  <Project Path="Anorath.domain/Anorath.domain.csproj" />
+  <Project Path="Anorath.Infrastructure/Anorath.Infrastructure.csproj" />
+  <Project Path="Anorath.WinUI/Anorath.WinUI.csproj" Id="35417030-7287-43f8-ad3d-93317bc8dff7">
+    <Platform Project="x64" />
+    <Deploy />
+  </Project>
+  <Project Path="ERP/ERP_Windforms.csproj" />
+</Solution>

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Anorath.WinUI.Pages.ShellPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <NavigationView x:Name="NavView"
+                    PaneDisplayMode="Left"
+                    PaneTitle="Anorath Resort"
+                    OpenPaneLength="240"
+                    IsBackButtonVisible="Collapsed"
+                    IsSettingsVisible="False"
+                    SelectionChanged="NavView_SelectionChanged">
+
+        <NavigationView.MenuItems>
+            <NavigationViewItem Content="Dashboard" Tag="Dashboard" Icon="ViewAll"/>
+
+            <NavigationViewItemHeader Content="Front Office"/>
+            <NavigationViewItem Content="Rooms" Tag="Rooms" Icon="Home"/>
+            <NavigationViewItem Content="Reservations" Tag="Reservations" Icon="Calendar"/>
+            <NavigationViewItem Content="Customers" Tag="Customers" Icon="People"/>
+
+            <NavigationViewItemHeader Content="Restaurant"/>
+            <NavigationViewItem Content="Menu" Tag="Menu" Icon="List"/>
+            <NavigationViewItem Content="Point of Sale" Tag="POS" Icon="Shop"/>
+
+            <NavigationViewItemHeader Content="Back Office"/>
+            <NavigationViewItem Content="Supply Chain" Tag="SupplyChain" Icon="Street"/>
+            <NavigationViewItem Content="Payroll" Tag="Payroll" Icon="ContactInfo"/>
+            <NavigationViewItem Content="Financial Statements" Tag="Financials" Icon="Document"/>
+            <NavigationViewItem Content="Reports" Tag="Reports" Icon="Page"/>
+
+            <NavigationViewItemHeader Content="Administration"/>
+            <NavigationViewItem Content="Users" Tag="Users" Icon="Contact"/>
+        </NavigationView.MenuItems>
+
+        <NavigationView.FooterMenuItems>
+            <NavigationViewItem Content="Sign out" Tag="Logout">
+                <NavigationViewItem.Icon>
+                    <FontIcon Glyph="&#xE7E8;"/>
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+        </NavigationView.FooterMenuItems>
+
+        <Frame x:Name="ContentFrame" Padding="24,8,24,24"/>
+    </NavigationView>
+</Page>
