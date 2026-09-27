@@ -17,10 +17,13 @@
     <None Remove="CustomerPage\CustomerPage.xaml" />
     <None Remove="Customer\CustomerPage.xaml" />
     <None Remove="Dashboard\DashboardPage.xaml" />
+    <None Remove="Financial Statement Page\FinancialStatementsPage.xaml" />
     <None Remove="Pages\LoginPage.xaml" />
     <None Remove="Pages\MenuPage.xaml" />
     <None Remove="Pages\PosPage.xaml" />
+    <None Remove="Payroll Page\PayrollPage.xaml" />
     <None Remove="PO Page\PurchaseOrderPage.xaml" />
+    <None Remove="Reports\ReportPage.xaml" />
     <None Remove="Roompage\RoomPage.xaml" />
     <None Remove="ShellPage\ShellPage.xaml" />
     <None Remove="SupplierPage\SupplierPage.xaml" />
@@ -114,6 +117,21 @@
   </ItemGroup>
   <ItemGroup>
     <Page Update="SupplyChain\SupplyChainPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <Page Update="Financial Statement Page\FinancialStatementsPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <Page Update="Payroll Page\PayrollPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <Page Update="Reports\ReportPage.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>
   </ItemGroup>

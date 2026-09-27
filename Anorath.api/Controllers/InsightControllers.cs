@@ -1,7 +1,9 @@
 ﻿using Anorath.domain.Entities.Reception;
 using Anorath.Infrastructure.Data;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace Anorath.api.Controllers
 {
@@ -37,20 +39,38 @@ namespace Anorath.api.Controllers
     }
 
     // =====================================================
-    // FINANCIAL STATEMENTS  (Income Statement)
+    // FINANCIAL STATEMENTS  (Income Statement + Income Tax)
+    // Owner (Admin) only, Small and Medium plans only.
     // =====================================================
     [ApiController]
     [Route("financials")]
+    [Authorize(Roles = "Admin")]
     public class FinancialsController : ControllerBase
     {
         private readonly TenantErpDbContext _db;
-        public FinancialsController(TenantErpDbContext db) => _db = db;
+        private readonly IConfiguration _config;
 
-        [HttpGet("income-statement")]
-        public async Task<IActionResult> IncomeStatement([FromQuery] DateTime? from, [FromQuery] DateTime? to)
+        public FinancialsController(TenantErpDbContext db, IConfiguration config)
         {
+            _db = db;
+            _config = config;
+        }
+
+        // GET financials/income-statement?from=2026-09-01&to=2026-09-30&taxRate=0.25
+        [HttpGet("income-statement")]
+        public async Task<IActionResult> IncomeStatement([FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] decimal? taxRate)
+        {
+            // Plan check comes from the signed token, not from the client
+            var plan = User.FindFirst("plan")?.Value;
+            if (plan == "Micro")
+                return StatusCode(403, "Financial Statements are available on the Small and Medium plans only.");
+
             var (start, endExclusive) = RevenueRules.Range(from, to);
-            if (endExclusive <= start) return BadRequest("'to' date must be on or after 'from' date.");
+            if (endExclusive <= start) return BadRequest("'To' date must be on or after 'From' date.");
+
+            // CREATE Act (RA 11534): 25% regular, 20% small corporations. Default comes from appsettings.
+            var rate = taxRate ?? _config.GetValue<decimal?>("Financials:IncomeTaxRate") ?? 0.25m;
+            if (rate < 0m || rate > 0.5m) return BadRequest("Tax rate must be between 0% and 50%.");
 
             try
             {
@@ -75,6 +95,7 @@ namespace Anorath.api.Controllers
                     .SumAsync(s => (decimal?)s.Total) ?? 0m;
                 revenueLines.Add(new { account = "Restaurant Sales", amount = restaurant });
 
+                // Only RECEIVED purchase orders are expenses
                 var purchases = await _db.PurchaseOrders.AsNoTracking()
                     .Where(p => p.Status == "Received" && (p.ReceivedDate ?? p.OrderDate) >= start && (p.ReceivedDate ?? p.OrderDate) < endExclusive)
                     .SumAsync(p => (decimal?)p.TotalCost) ?? 0m;
@@ -85,6 +106,10 @@ namespace Anorath.api.Controllers
 
                 var totalRevenue = revenueLines.Sum(x => x.amount);
                 var totalExpenses = purchases + salaries;
+                var incomeBeforeTax = totalRevenue - totalExpenses;
+
+                // No income tax on a loss
+                var incomeTax = incomeBeforeTax > 0 ? Math.Round(incomeBeforeTax * rate, 2) : 0m;
 
                 return Ok(new
                 {
@@ -98,7 +123,10 @@ namespace Anorath.api.Controllers
                         new { account = "Salaries & Wages", amount = salaries }
                     },
                     totalExpenses,
-                    netIncome = totalRevenue - totalExpenses
+                    incomeBeforeTax,
+                    taxRate = rate,
+                    incomeTax,
+                    netIncome = incomeBeforeTax - incomeTax
                 });
             }
             catch (Exception)
@@ -113,6 +141,7 @@ namespace Anorath.api.Controllers
     // =====================================================
     [ApiController]
     [Route("reports")]
+    [Authorize(Roles = "Admin,Manager,BranchManager")]
     public class ReportsController : ControllerBase
     {
         private readonly TenantErpDbContext _db;
@@ -218,6 +247,7 @@ namespace Anorath.api.Controllers
     // =====================================================
     [ApiController]
     [Route("analytics")]
+    [Authorize(Roles = "Admin,Manager,BranchManager")]
     public class AnalyticsController : ControllerBase
     {
         private readonly TenantErpDbContext _db;
@@ -244,7 +274,6 @@ namespace Anorath.api.Controllers
                     .Where(s => s.SaleDate >= monthStart && s.SaleDate < monthEnd)
                     .SumAsync(s => (decimal?)s.Total) ?? 0m;
 
-                // Retention: of customers with at least one non-cancelled stay, how many came back?
                 var byCustomer = reservations.Where(r => r.Status != "Cancelled").GroupBy(r => r.CustomerId).ToList();
                 var repeatCustomers = byCustomer.Count(g => g.Count() >= 2);
 
@@ -300,7 +329,9 @@ namespace Anorath.api.Controllers
                         revenue = roomRevenue + restaurantRevenue,
                         roomRevenue,
                         restaurantRevenue,
-                        reservations = inMonth.Count
+                        reservations = inMonth.Count,
+                        visits = inMonth.Count(r => RevenueRules.IsEarning(r.Status))
+
                     };
                 }).ToList();
 

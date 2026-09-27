@@ -9,9 +9,15 @@ namespace Anorath.WinUI.Pages
 {
     public sealed partial class ShellPage : Page
     {
-        // Menu Tag -> page. Remove the // on a line once that page is built.
+        // Lets pages (e.g. the Dashboard KPI cards) ask the shell to open another module
+        public static ShellPage? Current { get; private set; }
+
+        // Menu Tag -> page
         private readonly Dictionary<string, Type> _pages = new()
         {
+            { "Payroll", typeof(PayrollPage) },
+            { "Reports", typeof(ReportsPage) },
+            { "Financials", typeof(FinancialStatementsPage) },
             { "SupplyChain", typeof(SupplyChainPage) },
             { "Menu", typeof(MenuPage) },
             { "POS", typeof(PosPage) },
@@ -44,8 +50,25 @@ namespace Anorath.WinUI.Pages
 
         public ShellPage()
         {
+            Current = this;
             InitializeComponent();
             Loaded += (s, e) => ApplyMenu();
+        }
+
+        // Opens a module by its menu Tag. Returns false if this user/plan cannot see it.
+        public bool NavigateTo(string tag)
+        {
+            foreach (var obj in NavView.MenuItems)
+            {
+                if (obj is NavigationViewItem item &&
+                    item.Tag?.ToString() == tag &&
+                    item.Visibility == Visibility.Visible)
+                {
+                    NavView.SelectedItem = item;   // triggers NavView_SelectionChanged
+                    return true;
+                }
+            }
+            return false;
         }
 
         // Visible menu = what the PLAN includes AND what the ROLE may open
@@ -90,7 +113,6 @@ namespace Anorath.WinUI.Pages
                 }
             }
 
-            // Hide section headers with nothing visible under them
             foreach (var pair in headerHasItems)
                 pair.Key.Visibility = pair.Value ? Visibility.Visible : Visibility.Collapsed;
 

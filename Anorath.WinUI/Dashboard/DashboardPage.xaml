@@ -5,52 +5,89 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:Anorath.WinUI.Pages">
 
-    <Page.Resources>
-        <DataTemplate x:Key="KpiCardTemplate" x:DataType="local:KpiItem">
-            <Grid Width="220" Height="112" Padding="16" RowSpacing="8" CornerRadius="8"
+	<Page.Resources>
+		<DataTemplate x:Key="KpiCardTemplate" x:DataType="local:KpiItem">
+			<Grid Width="220" Height="112" Padding="16" RowSpacing="8" CornerRadius="8"
                   Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                   BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <FontIcon Glyph="{x:Bind Glyph}" FontSize="16" Foreground="{x:Bind Accent}"/>
-                    <TextBlock Text="{x:Bind Title}" Opacity="0.7" TextTrimming="CharacterEllipsis"/>
-                </StackPanel>
-                <TextBlock Grid.Row="1" Text="{x:Bind Value}" FontSize="26" FontWeight="SemiBold"
+				<Grid.RowDefinitions>
+					<RowDefinition Height="Auto"/>
+					<RowDefinition Height="*"/>
+				</Grid.RowDefinitions>
+				<Grid ColumnSpacing="8">
+					<Grid.ColumnDefinitions>
+						<ColumnDefinition Width="Auto"/>
+						<ColumnDefinition Width="*"/>
+						<ColumnDefinition Width="Auto"/>
+					</Grid.ColumnDefinitions>
+					<FontIcon Glyph="{x:Bind Glyph}" FontSize="16" Foreground="{x:Bind Accent}"/>
+					<TextBlock Grid.Column="1" Text="{x:Bind Title}" Opacity="0.7" TextTrimming="CharacterEllipsis"/>
+					<FontIcon Grid.Column="2" Glyph="&#xE76C;" FontSize="10" Opacity="0.4"/>
+				</Grid>
+				<TextBlock Grid.Row="1" Text="{x:Bind Value}" FontSize="26" FontWeight="SemiBold"
                            VerticalAlignment="Bottom"/>
-            </Grid>
-        </DataTemplate>
-    </Page.Resources>
+			</Grid>
+		</DataTemplate>
+	</Page.Resources>
 
-    <ScrollViewer>
-        <StackPanel Spacing="12" Padding="0,0,0,24">
-            <StackPanel Orientation="Horizontal" Spacing="12">
-                <Button Click="RefreshButton_Click">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xE72C;" FontSize="14"/>
-                        <TextBlock Text="Refresh"/>
-                    </StackPanel>
-                </Button>
-                <ProgressRing x:Name="Spinner" IsActive="False" Width="20" Height="20"/>
-                <TextBlock x:Name="StatusText" VerticalAlignment="Center" Opacity="0.6"/>
-            </StackPanel>
+	<ScrollViewer>
+		<StackPanel Spacing="12" Padding="0,0,0,24">
+			<StackPanel Orientation="Horizontal" Spacing="12">
+				<Button Click="RefreshButton_Click">
+					<StackPanel Orientation="Horizontal" Spacing="8">
+						<FontIcon Glyph="&#xE72C;" FontSize="14"/>
+						<TextBlock Text="Refresh"/>
+					</StackPanel>
+				</Button>
+				<ProgressRing x:Name="Spinner" IsActive="False" Width="20" Height="20"/>
+				<TextBlock x:Name="StatusText" VerticalAlignment="Center" Opacity="0.6"/>
+			</StackPanel>
 
-            <InfoBar x:Name="ErrorBar" Severity="Error" Title="Could not load the dashboard"
+			<InfoBar x:Name="ErrorBar" Severity="Error" Title="Could not load the dashboard"
                      IsOpen="False" IsClosable="True"/>
+			<InfoBar x:Name="NoticeBar" Severity="Informational" IsOpen="False" IsClosable="True"/>
 
-            <TextBlock Text="Finance" Style="{StaticResource SubtitleTextBlockStyle}"/>
-            <GridView ItemsSource="{x:Bind FinanceKpis}" ItemTemplate="{StaticResource KpiCardTemplate}"
-                      SelectionMode="None" IsItemClickEnabled="False"
+			<TextBlock Text="Finance" Style="{StaticResource SubtitleTextBlockStyle}"/>
+			<GridView ItemsSource="{x:Bind FinanceKpis}" ItemTemplate="{StaticResource KpiCardTemplate}"
+                      SelectionMode="None" IsItemClickEnabled="True" ItemClick="Kpi_ItemClick"
                       ScrollViewer.VerticalScrollMode="Disabled"
                       ScrollViewer.VerticalScrollBarVisibility="Disabled"/>
 
-            <TextBlock Text="Operations" Style="{StaticResource SubtitleTextBlockStyle}"/>
-            <GridView ItemsSource="{x:Bind OperationsKpis}" ItemTemplate="{StaticResource KpiCardTemplate}"
-                      SelectionMode="None" IsItemClickEnabled="False"
+			<TextBlock Text="Operations" Style="{StaticResource SubtitleTextBlockStyle}"/>
+			<GridView ItemsSource="{x:Bind OperationsKpis}" ItemTemplate="{StaticResource KpiCardTemplate}"
+                      SelectionMode="None" IsItemClickEnabled="True" ItemClick="Kpi_ItemClick"
                       ScrollViewer.VerticalScrollMode="Disabled"
                       ScrollViewer.VerticalScrollBarVisibility="Disabled"/>
-        </StackPanel>
-    </ScrollViewer>
+
+			<TextBlock Text="Trends · last 6 months" Style="{StaticResource SubtitleTextBlockStyle}"/>
+			<Grid ColumnSpacing="16" Margin="0,0,24,0">
+				<Grid.ColumnDefinitions>
+					<ColumnDefinition Width="*"/>
+					<ColumnDefinition Width="*"/>
+				</Grid.ColumnDefinitions>
+
+				<Border Padding="20" CornerRadius="8" BorderThickness="1"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+					<StackPanel Spacing="4">
+						<TextBlock Text="Guest visits per month" FontWeight="SemiBold" FontSize="16"/>
+						<TextBlock Text="Confirmed, checked-in and checked-out stays, by check-in month"
+                                   Opacity="0.6" FontSize="12" TextWrapping="Wrap"/>
+						<Grid x:Name="VisitsChart" Height="230" Margin="0,12,0,0"/>
+					</StackPanel>
+				</Border>
+
+				<Border Grid.Column="1" Padding="20" CornerRadius="8" BorderThickness="1"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+					<StackPanel Spacing="4">
+						<TextBlock Text="Revenue per month" FontWeight="SemiBold" FontSize="16"/>
+						<TextBlock Text="Room + restaurant revenue (hover a bar for the breakdown)"
+                                   Opacity="0.6" FontSize="12" TextWrapping="Wrap"/>
+						<Grid x:Name="RevenueChart" Height="230" Margin="0,12,0,0"/>
+					</StackPanel>
+				</Border>
+			</Grid>
+		</StackPanel>
+	</ScrollViewer>
 </Page>

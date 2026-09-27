@@ -9,6 +9,11 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using System.Diagnostics;
+using System.IO;
+using System.Net;
+using System.Text;
+using System.Text.Json;
 
 namespace Anorath.WinUI.Pages
 {
@@ -345,7 +350,130 @@ namespace Anorath.WinUI.Pages
 
             return await dialog.ShowAsync() == ContentDialogResult.Primary;
         }
+        // PRINT: Reservation Form & Guest Agreement (hard-copy proof, signed by guest and staff)
+        private async void Print_Click(object sender, RoutedEventArgs e)
+        {
+            var r = FindReservation(sender);
+            if (r == null) return;
 
+            // Guest contact details come from the customer record
+            string code = "", contact = "", email = "", address = "";
+            try
+            {
+                var customers = await ApiClient.GetAsync<List<JsonElement>>("customers");
+                var c = customers.FirstOrDefault(x => Prop(x, "customerId") == r.CustomerId.ToString());
+                if (c.ValueKind == JsonValueKind.Object)
+                {
+                    code = Prop(c, "customerCode");
+                    contact = Prop(c, "contactNumber", "contactNo", "phone");
+                    email = Prop(c, "email", "emailAddress");
+                    address = Prop(c, "address");
+                }
+            }
+            catch
+            {
+                // Still print the form; contact lines are left blank to be filled by hand
+            }
+
+            static string H(string? s) => WebUtility.HtmlEncode(s ?? "");
+            string Blank(string v) => string.IsNullOrWhiteSpace(v) ? "<span class='line'></span>" : H(v);
+
+            var resNo = $"RES-{r.ReservationId:00000}";
+            var rate = r.Nights > 0 ? r.Amount / r.Nights : r.Amount;
+
+            var sb = new StringBuilder();
+            sb.Append("<!doctype html><html><head><meta charset='utf-8'><title>").Append(resNo).Append("</title><style>");
+            sb.Append(@"
+body{font-family:'Segoe UI',Arial,sans-serif;color:#222;margin:36px auto;max-width:760px;font-size:13px;}
+.top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #1f4e79;padding-bottom:10px;}
+.company{font-size:22px;font-weight:700;color:#1f4e79;}
+.title{font-size:16px;font-weight:700;text-align:right;}
+.meta{text-align:right;line-height:1.6;}
+h3{font-size:13px;letter-spacing:.5px;color:#1f4e79;border-bottom:1px solid #ccd;padding-bottom:4px;margin:22px 0 8px;}
+table.kv{width:100%;border-collapse:collapse;} table.kv td{padding:5px 4px;vertical-align:top;}
+table.kv td.k{width:150px;color:#555;}
+.total{font-size:16px;font-weight:700;}
+.line{display:inline-block;min-width:260px;border-bottom:1px solid #999;height:14px;}
+ol{padding-left:18px;line-height:1.55;margin:0;}
+.agree{margin-top:14px;font-style:italic;}
+.sign{display:flex;justify-content:space-between;margin-top:56px;}
+.sign div{width:44%;text-align:center;}
+.sign .bar{border-top:1px solid #333;padding-top:6px;}
+.small{color:#666;font-size:11px;}
+.stamp{position:fixed;top:40%;left:18%;font-size:80px;color:rgba(200,0,0,.15);transform:rotate(-25deg);font-weight:700;}
+@media print{body{margin:12mm auto;}}
+");
+            sb.Append("</style></head><body>");
+            if (r.Status == "Cancelled") sb.Append("<div class='stamp'>CANCELLED</div>");
+
+            sb.Append("<div class='top'><div><div class='company'>").Append(H(Session.CompanyName)).Append("</div>");
+            sb.Append("<div class='small'>Reservation Form &amp; Guest Agreement</div></div>");
+            sb.Append("<div><div class='title'>RESERVATION FORM</div><div class='meta'>");
+            sb.Append("Reservation No: <b>").Append(resNo).Append("</b><br>");
+            sb.Append("Date issued: ").Append(DateTime.Now.ToString("MMMM dd, yyyy")).Append("<br>");
+            sb.Append("Status: <b>").Append(H(r.Status)).Append("</b></div></div></div>");
+
+            sb.Append("<h3>GUEST INFORMATION</h3><table class='kv'>");
+            sb.Append("<tr><td class='k'>Guest name</td><td><b>").Append(H(r.CustomerName)).Append("</b>")
+              .Append(string.IsNullOrEmpty(code) ? "" : $" ({H(code)})").Append("</td></tr>");
+            sb.Append("<tr><td class='k'>Contact number</td><td>").Append(Blank(contact)).Append("</td></tr>");
+            sb.Append("<tr><td class='k'>Email</td><td>").Append(Blank(email)).Append("</td></tr>");
+            sb.Append("<tr><td class='k'>Address</td><td>").Append(Blank(address)).Append("</td></tr>");
+            sb.Append("<tr><td class='k'>Valid ID presented</td><td><span class='line'></span></td></tr>");
+            sb.Append("</table>");
+
+            sb.Append("<h3>STAY DETAILS</h3><table class='kv'>");
+            sb.Append("<tr><td class='k'>Room</td><td>").Append(H(r.RoomNumber)).Append(" · ").Append(H(r.RoomType)).Append("</td></tr>");
+            sb.Append("<tr><td class='k'>Check-in</td><td>").Append(r.CheckIn.ToString("dddd, MMMM dd, yyyy")).Append(" · from 2:00 PM</td></tr>");
+            sb.Append("<tr><td class='k'>Check-out</td><td>").Append(r.CheckOut.ToString("dddd, MMMM dd, yyyy")).Append(" · until 12:00 NN</td></tr>");
+            sb.Append("<tr><td class='k'>Number of guests</td><td>").Append(r.NumberOfGuests).Append("</td></tr>");
+            sb.Append("<tr><td class='k'>Rate</td><td>₱").Append(rate.ToString("N2")).Append(" per night × ").Append(r.Nights).Append(" night(s)</td></tr>");
+            sb.Append("<tr><td class='k'>Total amount</td><td class='total'>₱").Append(r.Amount.ToString("N2")).Append("</td></tr>");
+            if (!string.IsNullOrWhiteSpace(r.Remarks))
+                sb.Append("<tr><td class='k'>Remarks</td><td>").Append(H(r.Remarks)).Append("</td></tr>");
+            sb.Append("</table>");
+
+            sb.Append("<h3>TERMS &amp; CONDITIONS</h3><ol>");
+            sb.Append("<li>Check-in time is 2:00 PM and check-out time is 12:00 noon. Late check-out is subject to availability and additional charges.</li>");
+            sb.Append("<li>A valid government-issued ID must be presented upon check-in.</li>");
+            sb.Append("<li>Cancellations made at least 48 hours before the check-in date are free of charge. Later cancellations or no-shows may be charged one (1) night.</li>");
+            sb.Append("<li>The number of guests may not exceed the room capacity stated above without prior approval.</li>");
+            sb.Append("<li>The guest is liable for any loss of or damage to resort property caused by the guest or companions.</li>");
+            sb.Append("<li>Restaurant and other charges made to the room must be settled upon check-out.</li>");
+            sb.Append("<li>The resort is not responsible for valuables not deposited at the front desk.</li>");
+            sb.Append("</ol>");
+            sb.Append("<p class='agree'>I have read and agree to the terms and conditions above, and confirm that the information in this form is correct.</p>");
+
+            sb.Append("<div class='sign'>");
+            sb.Append("<div><div style='height:18px'>").Append(H(r.CustomerName)).Append("</div><div class='bar'>Guest signature over printed name</div><div class='small'>Date: ____________</div></div>");
+            sb.Append("<div><div style='height:18px'>").Append(H(Session.FullName)).Append("</div><div class='bar'>Received by (").Append(H(Session.Role)).Append(")</div><div class='small'>Date: ____________</div></div>");
+            sb.Append("</div>");
+
+            sb.Append("<p class='small' style='margin-top:30px'>Generated ").Append(DateTime.Now.ToString("MMM dd, yyyy h:mm tt"))
+              .Append(" · Keep this form as proof of reservation.</p>");
+            sb.Append("<script>window.onload=function(){window.print();}</script></body></html>");
+
+            try
+            {
+                var path = Path.Combine(Path.GetTempPath(), $"{resNo}.html");
+                File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
+                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+                Show(InfoBarSeverity.Informational, "Reservation form opened in your browser. Print it, or choose \"Save as PDF\".");
+            }
+            catch (Exception ex)
+            {
+                Show(InfoBarSeverity.Error, "Could not open the print page: " + ex.Message);
+            }
+        }
+
+        // Reads the first property that exists (API field names are camelCase)
+        private static string Prop(JsonElement e, params string[] names)
+        {
+            foreach (var n in names)
+                if (e.TryGetProperty(n, out var v) && v.ValueKind != JsonValueKind.Null)
+                    return v.ToString();
+            return "";
+        }
         private void Show(InfoBarSeverity severity, string message)
         {
             MessageBar.Severity = severity;

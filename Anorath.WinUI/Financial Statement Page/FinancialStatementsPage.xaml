@@ -1,0 +1,45 @@
+<Page
+    x:Class="Anorath.WinUI.Pages.FinancialStatementsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <ScrollViewer>
+        <StackPanel Padding="32,24,32,32" Spacing="16">
+            <TextBlock Text="Financial Statements" Style="{StaticResource TitleTextBlockStyle}"/>
+
+            <InfoBar x:Name="MessageBar" IsOpen="False" IsClosable="True"/>
+
+            <!-- Filters -->
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="160"/>
+                    <ColumnDefinition Width="160"/>
+                    <ColumnDefinition Width="160"/>
+                    <ColumnDefinition Width="280"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <ComboBox x:Name="PresetBox" Header="Period" HorizontalAlignment="Stretch"
+                          SelectionChanged="PresetBox_SelectionChanged"/>
+                <CalendarDatePicker x:Name="FromPicker" Grid.Column="1" Header="From" HorizontalAlignment="Stretch"/>
+                <CalendarDatePicker x:Name="ToPicker" Grid.Column="2" Header="To" HorizontalAlignment="Stretch"/>
+                <ComboBox x:Name="TaxBox" Grid.Column="3" Header="Income tax (CREATE Act)" HorizontalAlignment="Stretch"/>
+                <Button Grid.Column="4" Content="Generate" VerticalAlignment="Bottom"
+                        Style="{StaticResource AccentButtonStyle}" Click="Generate_Click"/>
+                <Button x:Name="PrintButton" Grid.Column="5" Content="Print / Save as PDF"
+                        VerticalAlignment="Bottom" IsEnabled="False" Click="Print_Click"/>
+            </Grid>
+
+            <!-- The statement ("paper") -->
+            <Border MaxWidth="760" HorizontalAlignment="Left" Padding="40,32"
+                    CornerRadius="8" BorderThickness="1"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                <StackPanel x:Name="StatementPanel" Spacing="2" Width="660"/>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>
