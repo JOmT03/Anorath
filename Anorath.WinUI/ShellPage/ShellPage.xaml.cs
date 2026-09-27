@@ -12,10 +12,14 @@ namespace Anorath.WinUI.Pages
         // Menu Tag -> page. Remove the // on a line once that page is built.
         private readonly Dictionary<string, Type> _pages = new()
         {
-             { "Customers", typeof(CustomersPage) },
+            { "SupplyChain", typeof(SupplyChainPage) },
+            { "Menu", typeof(MenuPage) },
+            { "POS", typeof(PosPage) },
+            { "Reservations", typeof(ReservationsPage) },
+            { "Customers", typeof(CustomersPage) },
             { "Dashboard", typeof(DashboardPage) },
             { "Rooms", typeof(RoomsPage) },
-             { "Users", typeof(UsersPage) },
+            { "Users", typeof(UsersPage) },
         };
 
         // What each subscription PLAN includes (ERP modules per tier)

@@ -19,6 +19,8 @@ namespace Anorath.Infrastructure.Data
         public DbSet<Room> Rooms => Set<Room>();
         public DbSet<Supplier> Suppliers { get; set; }
         public DbSet<PurchaseOrder> PurchaseOrders { get; set; }
+        public DbSet<SupplierItem> SupplierItems { get; set; }
+        public DbSet<PurchaseOrderLine> PurchaseOrderLines { get; set; }
         public DbSet<Employee> Employees { get; set; }
         public DbSet<PayrollRecord> PayrollRecords { get; set; }
         public DbSet<Sale> Sales { get; set; }

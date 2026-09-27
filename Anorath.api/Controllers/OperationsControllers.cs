@@ -1,40 +1,67 @@
-﻿using Anorath.domain.Entities.Operations;
+﻿using System.Text.RegularExpressions;
+using Anorath.domain.Entities.Operations;
 using Anorath.Infrastructure.Data;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace Anorath.api.Controllers
 {
-    public record PurchaseOrderRequest(int SupplierId, DateTime OrderDate, string ItemDescription, int Quantity, decimal UnitCost);
+    // ---------- Request DTOs ----------
+    public record PoLineRequest(int SupplierItemId, int Quantity);
+    public record PurchaseOrderRequest(int SupplierId, DateTime OrderDate, List<PoLineRequest> Lines);
     public record StatusRequest(string Status);
     public record PayrollRequest(int EmployeeId, DateTime PeriodStart, DateTime PeriodEnd, decimal DaysWorked, decimal Deductions);
 
     // =====================================================
-    // SUPPLIERS  (Supply Chain / Procurement)
+    // SUPPLIERS + SUPPLIER ITEMS (price list)
     // =====================================================
     [ApiController]
     [Route("suppliers")]
+    [Authorize(Roles = "Admin,Manager,BranchManager")]
     public class SuppliersController : ControllerBase
     {
+        private static readonly Regex EmailRx = new(@"^[^@\s]+@[^@\s]+\.[^@\s]+$");
         private readonly TenantErpDbContext _db;
         public SuppliersController(TenantErpDbContext db) => _db = db;
 
+        // GET suppliers?search=acdc
         [HttpGet]
-        public async Task<IActionResult> GetAll()
+        public async Task<IActionResult> GetAll([FromQuery] string? search)
         {
-            var suppliers = await _db.Suppliers.AsNoTracking().OrderBy(s => s.SupplierName).ToListAsync();
-            return Ok(suppliers);
+            var q = _db.Suppliers.AsNoTracking().AsQueryable();
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var s = search.Trim();
+                q = q.Where(x => x.SupplierName.Contains(s) || x.SupplierCode.Contains(s)
+                              || (x.ContactPerson != null && x.ContactPerson.Contains(s)));
+            }
+            return Ok(await q.OrderBy(x => x.SupplierName).ToListAsync());
         }
 
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] Supplier supplier)
         {
-            if (string.IsNullOrWhiteSpace(supplier.SupplierCode) || string.IsNullOrWhiteSpace(supplier.SupplierName))
-                return BadRequest("SupplierCode and SupplierName are required.");
+            var error = Validate(supplier);
+            if (error != null) return BadRequest(error);
+
+            if (await _db.Suppliers.AnyAsync(s => s.SupplierName == supplier.SupplierName.Trim()))
+                return BadRequest("A supplier with this name already exists.");
+
+            // Auto-generate SUP-0001, SUP-0002, ...
+            var next = await _db.Suppliers.CountAsync() + 1;
+            var newCode = $"SUP-{next:0000}";
+            while (await _db.Suppliers.AnyAsync(s => s.SupplierCode == newCode))
+            {
+                next++;
+                newCode = $"SUP-{next:0000}";
+            }
 
             try
             {
                 supplier.SupplierId = 0;
+                supplier.SupplierCode = newCode;
+                Clean(supplier);
                 _db.Suppliers.Add(supplier);
                 await _db.SaveChangesAsync();
                 return Created($"/suppliers/{supplier.SupplierId}", supplier);
@@ -49,17 +76,22 @@ namespace Anorath.api.Controllers
         public async Task<IActionResult> Update(int id, [FromBody] Supplier updated)
         {
             var supplier = await _db.Suppliers.FindAsync(id);
-            if (supplier is null) return NotFound();
+            if (supplier is null) return NotFound("Supplier not found.");
 
-            if (string.IsNullOrWhiteSpace(updated.SupplierCode) || string.IsNullOrWhiteSpace(updated.SupplierName))
-                return BadRequest("SupplierCode and SupplierName are required.");
+            var error = Validate(updated);
+            if (error != null) return BadRequest(error);
+
+            if (await _db.Suppliers.AnyAsync(s => s.SupplierId != id && s.SupplierName == updated.SupplierName.Trim()))
+                return BadRequest("A supplier with this name already exists.");
 
             try
             {
-                supplier.SupplierCode = updated.SupplierCode;
+                Clean(updated);
                 supplier.SupplierName = updated.SupplierName;
+                supplier.ContactPerson = updated.ContactPerson;
                 supplier.ContactNumber = updated.ContactNumber;
                 supplier.EmailAddress = updated.EmailAddress;
+                supplier.Address = updated.Address;
                 supplier.IsActive = updated.IsActive;
                 await _db.SaveChangesAsync();
                 return Ok(supplier);
@@ -74,13 +106,15 @@ namespace Anorath.api.Controllers
         public async Task<IActionResult> Delete(int id)
         {
             var supplier = await _db.Suppliers.FindAsync(id);
-            if (supplier is null) return NotFound();
+            if (supplier is null) return NotFound("Supplier not found.");
 
             if (await _db.PurchaseOrders.AnyAsync(p => p.SupplierId == id))
                 return BadRequest("This supplier has purchase orders. Set it to inactive instead of deleting.");
 
             try
             {
+                var items = _db.SupplierItems.Where(i => i.SupplierId == id);
+                _db.SupplierItems.RemoveRange(items);
                 _db.Suppliers.Remove(supplier);
                 await _db.SaveChangesAsync();
                 return NoContent();
@@ -90,95 +124,290 @@ namespace Anorath.api.Controllers
                 return StatusCode(500, "Failed to delete supplier.");
             }
         }
+
+        // ---------- ITEMS (price list) ----------
+
+        // GET suppliers/5/items
+        [HttpGet("{id:int}/items")]
+        public async Task<IActionResult> GetItems(int id, [FromQuery] bool activeOnly = false)
+        {
+            if (!await _db.Suppliers.AnyAsync(s => s.SupplierId == id))
+                return NotFound("Supplier not found.");
+
+            var q = _db.SupplierItems.AsNoTracking().Where(i => i.SupplierId == id);
+            if (activeOnly) q = q.Where(i => i.IsActive);
+            return Ok(await q.OrderBy(i => i.ItemName).ToListAsync());
+        }
+
+        // POST suppliers/5/items
+        [HttpPost("{id:int}/items")]
+        public async Task<IActionResult> AddItem(int id, [FromBody] SupplierItem item)
+        {
+            if (!await _db.Suppliers.AnyAsync(s => s.SupplierId == id))
+                return NotFound("Supplier not found.");
+
+            var error = ValidateItem(item);
+            if (error != null) return BadRequest(error);
+
+            var name = item.ItemName.Trim();
+            if (await _db.SupplierItems.AnyAsync(i => i.SupplierId == id && i.ItemName == name))
+                return BadRequest("This supplier already has an item with that name.");
+
+            try
+            {
+                item.SupplierItemId = 0;
+                item.SupplierId = id;
+                item.ItemName = name;
+                item.Unit = string.IsNullOrWhiteSpace(item.Unit) ? "pcs" : item.Unit.Trim();
+                item.UnitPrice = Math.Round(item.UnitPrice, 2);
+                _db.SupplierItems.Add(item);
+                await _db.SaveChangesAsync();
+                return Created($"/suppliers/items/{item.SupplierItemId}", item);
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, "Failed to add item.");
+            }
+        }
+
+        // PUT suppliers/items/7
+        [HttpPut("items/{itemId:int}")]
+        public async Task<IActionResult> UpdateItem(int itemId, [FromBody] SupplierItem updated)
+        {
+            var item = await _db.SupplierItems.FindAsync(itemId);
+            if (item is null) return NotFound("Item not found.");
+
+            var error = ValidateItem(updated);
+            if (error != null) return BadRequest(error);
+
+            var name = updated.ItemName.Trim();
+            if (await _db.SupplierItems.AnyAsync(i => i.SupplierId == item.SupplierId && i.SupplierItemId != itemId && i.ItemName == name))
+                return BadRequest("This supplier already has an item with that name.");
+
+            try
+            {
+                item.ItemName = name;
+                item.Unit = string.IsNullOrWhiteSpace(updated.Unit) ? "pcs" : updated.Unit.Trim();
+                item.UnitPrice = Math.Round(updated.UnitPrice, 2);
+                item.IsActive = updated.IsActive;
+                await _db.SaveChangesAsync();
+                return Ok(item);
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, "Failed to update item.");
+            }
+        }
+
+        // DELETE suppliers/items/7
+        [HttpDelete("items/{itemId:int}")]
+        public async Task<IActionResult> DeleteItem(int itemId)
+        {
+            var item = await _db.SupplierItems.FindAsync(itemId);
+            if (item is null) return NotFound("Item not found.");
+
+            if (await _db.PurchaseOrderLines.AnyAsync(l => l.SupplierItemId == itemId))
+                return BadRequest("This item is already used in purchase orders. Set it to inactive instead of deleting.");
+
+            try
+            {
+                _db.SupplierItems.Remove(item);
+                await _db.SaveChangesAsync();
+                return NoContent();
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, "Failed to delete item.");
+            }
+        }
+
+        // ---------- helpers ----------
+        private static string? Validate(Supplier s)
+        {
+            if (string.IsNullOrWhiteSpace(s.SupplierName)) return "Supplier name is required.";
+            if (s.SupplierName.Trim().Length > 150) return "Supplier name is too long (max 150).";
+            if (!string.IsNullOrWhiteSpace(s.EmailAddress) && !EmailRx.IsMatch(s.EmailAddress.Trim()))
+                return "Email address is not valid.";
+            if (!string.IsNullOrWhiteSpace(s.ContactNumber) && !Regex.IsMatch(s.ContactNumber.Trim(), @"^[0-9+\-\s()]{7,20}$"))
+                return "Contact number is not valid.";
+            return null;
+        }
+
+        private static void Clean(Supplier s)
+        {
+            s.SupplierName = s.SupplierName.Trim();
+            s.ContactPerson = string.IsNullOrWhiteSpace(s.ContactPerson) ? null : s.ContactPerson.Trim();
+            s.ContactNumber = string.IsNullOrWhiteSpace(s.ContactNumber) ? null : s.ContactNumber.Trim();
+            s.EmailAddress = string.IsNullOrWhiteSpace(s.EmailAddress) ? null : s.EmailAddress.Trim();
+            s.Address = string.IsNullOrWhiteSpace(s.Address) ? null : s.Address.Trim();
+        }
+
+        private static string? ValidateItem(SupplierItem i)
+        {
+            if (string.IsNullOrWhiteSpace(i.ItemName)) return "Item name is required.";
+            if (i.ItemName.Trim().Length > 150) return "Item name is too long (max 150).";
+            if (i.UnitPrice <= 0) return "Unit price must be greater than zero.";
+            return null;
+        }
     }
 
     // =====================================================
-    // PURCHASE ORDERS  (Supply Chain / Procurement)
+    // PURCHASE ORDERS (multi-item, per supplier)
     // =====================================================
     [ApiController]
     [Route("purchaseorders")]
+    [Authorize(Roles = "Admin,Manager,BranchManager")]
     public class PurchaseOrdersController : ControllerBase
     {
-        private static readonly string[] AllowedStatuses = { "Pending", "Received", "Cancelled" };
-
         private readonly TenantErpDbContext _db;
         public PurchaseOrdersController(TenantErpDbContext db) => _db = db;
 
-        [HttpGet]
-        public async Task<IActionResult> GetAll()
-        {
-            var suppliers = await _db.Suppliers.AsNoTracking().ToDictionaryAsync(s => s.SupplierId, s => s.SupplierName);
-            var orders = await _db.PurchaseOrders.AsNoTracking().OrderByDescending(p => p.OrderDate).ToListAsync();
+        private static string PoNumber(int id) => $"PO-{id:00000}";
 
-            var result = orders.Select(p => new
+        // GET purchaseorders?supplierId=1&status=Pending
+        [HttpGet]
+        public async Task<IActionResult> GetAll([FromQuery] int? supplierId, [FromQuery] string? status)
+        {
+            var q = _db.PurchaseOrders.AsNoTracking().AsQueryable();
+            if (supplierId is > 0) q = q.Where(p => p.SupplierId == supplierId);
+            if (!string.IsNullOrWhiteSpace(status) && status != "All") q = q.Where(p => p.Status == status);
+
+            var suppliers = await _db.Suppliers.AsNoTracking().ToDictionaryAsync(s => s.SupplierId, s => s.SupplierName);
+            var orders = await q.OrderByDescending(p => p.OrderDate).ThenByDescending(p => p.PurchaseOrderId).ToListAsync();
+
+            return Ok(orders.Select(p => new
             {
                 p.PurchaseOrderId,
+                PoNumber = PoNumber(p.PurchaseOrderId),
                 p.SupplierId,
-                SupplierName = suppliers.TryGetValue(p.SupplierId, out var name) ? name : "(unknown)",
+                SupplierName = suppliers.TryGetValue(p.SupplierId, out var n) ? n : "(unknown)",
                 p.OrderDate,
                 p.ItemDescription,
                 p.Quantity,
-                p.UnitCost,
                 p.TotalCost,
                 p.Status,
                 p.ReceivedDate
-            });
+            }));
+        }
 
-            return Ok(result);
+        // GET purchaseorders/5  (header + supplier + lines, used for View/Print)
+        [HttpGet("{id:int}")]
+        public async Task<IActionResult> GetById(int id)
+        {
+            var po = await _db.PurchaseOrders.AsNoTracking().FirstOrDefaultAsync(p => p.PurchaseOrderId == id);
+            if (po is null) return NotFound("Purchase order not found.");
+
+            var supplier = await _db.Suppliers.AsNoTracking().FirstOrDefaultAsync(s => s.SupplierId == po.SupplierId);
+            var lines = await _db.PurchaseOrderLines.AsNoTracking()
+                .Where(l => l.PurchaseOrderId == id).OrderBy(l => l.PurchaseOrderLineId).ToListAsync();
+
+            return Ok(new
+            {
+                po.PurchaseOrderId,
+                PoNumber = PoNumber(po.PurchaseOrderId),
+                po.OrderDate,
+                po.Status,
+                po.ReceivedDate,
+                po.TotalCost,
+                Supplier = supplier,
+                Lines = lines
+            });
         }
 
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] PurchaseOrderRequest req)
         {
-            if (string.IsNullOrWhiteSpace(req.ItemDescription))
-                return BadRequest("Item description is required.");
-            if (req.Quantity <= 0)
-                return BadRequest("Quantity must be greater than zero.");
-            if (req.UnitCost < 0)
-                return BadRequest("Unit cost cannot be negative.");
+            if (req.Lines is null || req.Lines.Count == 0)
+                return BadRequest("Add at least one item to the purchase order.");
+            if (req.Lines.Any(l => l.Quantity <= 0))
+                return BadRequest("Every item must have a quantity greater than zero.");
 
             var supplier = await _db.Suppliers.FindAsync(req.SupplierId);
             if (supplier is null || !supplier.IsActive)
                 return BadRequest("A valid, active supplier is required.");
 
+            // Merge duplicate items (same item picked twice → add quantities)
+            var merged = req.Lines.GroupBy(l => l.SupplierItemId)
+                                  .Select(g => new { ItemId = g.Key, Qty = g.Sum(x => x.Quantity) })
+                                  .ToList();
+
+            var ids = merged.Select(m => m.ItemId).ToList();
+            var items = await _db.SupplierItems
+                .Where(i => ids.Contains(i.SupplierItemId) && i.SupplierId == req.SupplierId && i.IsActive)
+                .ToDictionaryAsync(i => i.SupplierItemId);
+
+            if (items.Count != ids.Count)
+                return BadRequest("One or more items are invalid, inactive, or not from this supplier.");
+
+            await using var tx = await _db.Database.BeginTransactionAsync();
             try
             {
+                // Prices always come from the supplier's price list, never from the client
+                var lines = merged.Select(m =>
+                {
+                    var it = items[m.ItemId];
+                    return new PurchaseOrderLine
+                    {
+                        SupplierItemId = it.SupplierItemId,
+                        ItemName = it.ItemName,
+                        Unit = it.Unit,
+                        Quantity = m.Qty,
+                        UnitPrice = it.UnitPrice,
+                        LineTotal = Math.Round(it.UnitPrice * m.Qty, 2)
+                    };
+                }).ToList();
+
+                var first = lines[0].ItemName;
+                var summary = lines.Count == 1 ? first : $"{first} + {lines.Count - 1} more";
+                if (summary.Length > 200) summary = summary[..200];
+
                 var order = new PurchaseOrder
                 {
                     SupplierId = req.SupplierId,
                     OrderDate = req.OrderDate == default ? DateTime.Today : req.OrderDate.Date,
-                    ItemDescription = req.ItemDescription.Trim(),
-                    Quantity = req.Quantity,
-                    UnitCost = req.UnitCost,
-                    TotalCost = Math.Round(req.Quantity * req.UnitCost, 2),
+                    ItemDescription = summary,
+                    Quantity = lines.Sum(l => l.Quantity),
+                    UnitCost = 0,
+                    TotalCost = lines.Sum(l => l.LineTotal),
                     Status = "Pending"
                 };
 
                 _db.PurchaseOrders.Add(order);
                 await _db.SaveChangesAsync();
-                return Created($"/purchaseorders/{order.PurchaseOrderId}", order);
+
+                foreach (var l in lines) l.PurchaseOrderId = order.PurchaseOrderId;
+                _db.PurchaseOrderLines.AddRange(lines);
+                await _db.SaveChangesAsync();
+
+                await tx.CommitAsync();
+                return Created($"/purchaseorders/{order.PurchaseOrderId}",
+                    new { order.PurchaseOrderId, PoNumber = PoNumber(order.PurchaseOrderId), order.TotalCost });
             }
             catch (Exception)
             {
+                await tx.RollbackAsync();
                 return StatusCode(500, "Failed to create purchase order.");
             }
         }
 
+        // PUT purchaseorders/5/status   Pending -> Received / Cancelled only
         [HttpPut("{id:int}/status")]
         public async Task<IActionResult> UpdateStatus(int id, [FromBody] StatusRequest req)
         {
-            if (!AllowedStatuses.Contains(req.Status))
-                return BadRequest("Status must be Pending, Received, or Cancelled.");
-
             var order = await _db.PurchaseOrders.FindAsync(id);
-            if (order is null) return NotFound();
+            if (order is null) return NotFound("Purchase order not found.");
+
+            if (order.Status != "Pending")
+                return BadRequest($"This order is already {order.Status} and can no longer be changed.");
+            if (req.Status != "Received" && req.Status != "Cancelled")
+                return BadRequest("A pending order can only be marked Received or Cancelled.");
 
             try
             {
                 order.Status = req.Status;
                 order.ReceivedDate = req.Status == "Received" ? DateTime.Today : null;
                 await _db.SaveChangesAsync();
-                return Ok(order);
+                return Ok(new { order.PurchaseOrderId, order.Status, order.ReceivedDate });
             }
             catch (Exception)
             {
@@ -190,13 +419,15 @@ namespace Anorath.api.Controllers
         public async Task<IActionResult> Delete(int id)
         {
             var order = await _db.PurchaseOrders.FindAsync(id);
-            if (order is null) return NotFound();
+            if (order is null) return NotFound("Purchase order not found.");
 
             if (order.Status == "Received")
                 return BadRequest("Received orders are recorded as expenses and cannot be deleted.");
 
             try
             {
+                var lines = _db.PurchaseOrderLines.Where(l => l.PurchaseOrderId == id);
+                _db.PurchaseOrderLines.RemoveRange(lines);
                 _db.PurchaseOrders.Remove(order);
                 await _db.SaveChangesAsync();
                 return NoContent();
@@ -209,10 +440,11 @@ namespace Anorath.api.Controllers
     }
 
     // =====================================================
-    // EMPLOYEES  (Payroll)
+    // EMPLOYEES (Payroll)
     // =====================================================
     [ApiController]
     [Route("employees")]
+    [Authorize(Roles = "Admin,Manager,BranchManager")]
     public class EmployeesController : ControllerBase
     {
         private readonly TenantErpDbContext _db;
@@ -302,6 +534,7 @@ namespace Anorath.api.Controllers
     // =====================================================
     [ApiController]
     [Route("payroll")]
+    [Authorize(Roles = "Admin,Manager,BranchManager")]
     public class PayrollController : ControllerBase
     {
         private readonly TenantErpDbContext _db;

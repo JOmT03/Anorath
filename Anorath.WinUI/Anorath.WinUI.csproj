@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
@@ -18,8 +18,13 @@
     <None Remove="Customer\CustomerPage.xaml" />
     <None Remove="Dashboard\DashboardPage.xaml" />
     <None Remove="Pages\LoginPage.xaml" />
+    <None Remove="Pages\MenuPage.xaml" />
+    <None Remove="Pages\PosPage.xaml" />
+    <None Remove="PO Page\PurchaseOrderPage.xaml" />
     <None Remove="Roompage\RoomPage.xaml" />
     <None Remove="ShellPage\ShellPage.xaml" />
+    <None Remove="SupplierPage\SupplierPage.xaml" />
+    <None Remove="SupplyChain\SupplyChainPage.xaml" />
     <None Remove="UserPage\UserPage.xaml" />
   </ItemGroup>
 
@@ -50,6 +55,16 @@
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
   </ItemGroup>
   <ItemGroup>
+    <Page Update="Pages\PosPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <Page Update="Pages\MenuPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
     <Page Update="Pages\LoginPage.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>
@@ -78,10 +93,27 @@
     </Page>
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="NewFolder\" />
+    <Page Update="ReservationPage\Reservation.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
   </ItemGroup>
   <ItemGroup>
     <Page Update="Customer\CustomerPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <Page Update="SupplierPage\SupplierPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <Page Update="PO Page\PurchaseOrderPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <Page Update="SupplyChain\SupplyChainPage.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>
   </ItemGroup>

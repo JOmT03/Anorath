@@ -1,0 +1,17 @@
+<Page
+    x:Class="Anorath.WinUI.Pages.SupplyChainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Pivot x:Name="Tabs" Margin="8,0,8,0" SelectionChanged="Tabs_SelectionChanged">
+        <PivotItem Header="Suppliers">
+            <Frame x:Name="SuppliersFrame"/>
+        </PivotItem>
+        <PivotItem Header="Purchase Orders">
+            <Frame x:Name="OrdersFrame"/>
+        </PivotItem>
+    </Pivot>
+</Page>
