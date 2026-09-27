@@ -32,6 +32,8 @@
 
             <NavigationViewItemHeader Content="Administration"/>
             <NavigationViewItem Content="Users" Tag="Users" Icon="Contact"/>
+            <NavigationViewItemHeader Content="Master"/>
+            <NavigationViewItem Content="Tenant Companies" Tag="Companies" Icon="World"/>
         </NavigationView.MenuItems>
 
         <NavigationView.FooterMenuItems>

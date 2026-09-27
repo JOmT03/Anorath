@@ -15,6 +15,7 @@ namespace Anorath.WinUI.Pages
         // Menu Tag -> page
         private readonly Dictionary<string, Type> _pages = new()
         {
+                        { "Companies", typeof(CompaniesPage) },
             { "Payroll", typeof(PayrollPage) },
             { "Reports", typeof(ReportsPage) },
             { "Financials", typeof(FinancialStatementsPage) },
@@ -31,6 +32,7 @@ namespace Anorath.WinUI.Pages
         // What each subscription PLAN includes (ERP modules per tier)
         private static readonly Dictionary<string, string[]> PlanMenus = new()
         {
+            ["Master"] = new[] { "Companies" },
             ["Micro"] = new[] { "Rooms", "Reservations", "Customers", "Menu", "POS", "Reports", "Users" },
             ["Small"] = new[] { "Dashboard", "Rooms", "Reservations", "Customers", "Menu", "POS", "Reports",
                                  "SupplyChain", "Payroll", "Financials", "Users" },
@@ -41,6 +43,7 @@ namespace Anorath.WinUI.Pages
         // What each ROLE is allowed to open. "*" = everything in the plan.
         private static readonly Dictionary<string, string[]> RoleMenus = new()
         {
+            ["SuperAdmin"] = new[] { "Companies" },
             ["Admin"] = new[] { "*" },
             ["Manager"] = new[] { "Dashboard", "SupplyChain", "Payroll", "Reports" },
             ["BranchManager"] = new[] { "Dashboard", "SupplyChain", "Payroll", "Reports" },
@@ -53,6 +56,7 @@ namespace Anorath.WinUI.Pages
             Current = this;
             InitializeComponent();
             Loaded += (s, e) => ApplyMenu();
+
         }
 
         // Opens a module by its menu Tag. Returns false if this user/plan cannot see it.
@@ -84,7 +88,7 @@ namespace Anorath.WinUI.Pages
 
         private void ApplyMenu()
         {
-            NavView.PaneTitle = $"{Session.CompanyName} ({Session.Plan})";
+            NavView.PaneTitle = Session.IsSuperAdmin ? "Anorath Master Console" : $"{Session.CompanyName} ({Session.Plan})";
 
             var allowed = GetAllowedTags();
 
